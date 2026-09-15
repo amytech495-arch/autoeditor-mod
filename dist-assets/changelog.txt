@@ -1,0 +1,65 @@
+Version 1.2
+=========
+NEW — Image Effects panel
+  Apply one of 12 effects per clip — Black & White, Sepia, Warm, Cool,
+  Film Grain, Noise, Heavy Noise, Vignette, VHS, Grunge, and Dust — with
+  an intensity slider. Effects persist across project saves.
+
+NEW — 60fps export
+  Select 60fps in the export panel for smooth playback on high-refresh
+  displays.
+
+NEW — 4K UHD export
+  Scale up to 3840×2160 (or down to 720p for speed). If the device's
+  encoder can't handle the full size, the render automatically falls back
+  to the next supported resolution with an on-screen notice.
+
+CHANGED — Stable effect rendering
+  Effects are seeded per-clip so they no longer flicker or pulse between
+  frames.
+
+CHANGED — Branding
+  Tab title and in-app header renamed to "AutoEditor Mod".
+
+CHANGED — Transport controls
+  Skip buttons switched from emoji ⏪/⏩ to ⏮/⏭ symbols for consistent
+  rendering across platforms.
+
+REMOVED — Light-leak effect
+  Dropped due to rendering instability. Saved projects that still
+  reference it will load without error — the slot simply renders as None.
+
+
+Version 1.0
+=========
+First public release of AutoEditor Mod.
+
+Core
+  Timestamp-named images plus a voiceover track merged into an MP4 on
+  your own machine — nothing uploaded to the internet.
+
+Editing
+  Drag-and-drop image import, per-clip trim, fit mode (cover / contain),
+  and drag-reorder in the timeline.
+
+Transitions
+  Fade, wipe, zoom, and slide transitions between clips with adjustable
+  duration.
+
+Audio
+  Multiple audio layer support, per-layer volume control, and automatic
+  voice/music sync.
+
+Text
+  Subtitle overlay from SRT or SSA files, per-cue style and size.
+
+Overlays and Watermark
+  Overlay a video or image on top of the main track with opacity and
+  blend-mode controls; optional persistent watermark.
+
+Export
+  WebCodecs (browser-native) and FFmpeg rendering, quality presets, and
+  a real-time progress bar.
+
+Project
+  Save and resume full project state as a JSON file.
