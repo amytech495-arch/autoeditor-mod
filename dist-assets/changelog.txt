@@ -1,5 +1,9 @@
 Version 1.2
 =========
+RELEASE — Published on GitHub
+  Project is now open on GitHub:
+  https://github.com/banonggang/autoeditor-mod
+
 NEW — Image Effects panel
   Apply one of 12 effects per clip — Black & White, Sepia, Warm, Cool,
   Film Grain, Noise, Heavy Noise, Vignette, VHS, Grunge, and Dust — with
