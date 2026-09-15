@@ -23,18 +23,25 @@ Turn timestamp-named images plus a voiceover into an MP4 — entirely on your ow
 
 ## Quick Start
 
+Requires **Node.js** (LTS, from https://nodejs.org). Then run the launcher for your platform:
+
+| Platform | Run |
+| --- | --- |
+| Windows | Double-click `1 Run-Windows.bat` |
+| macOS (Apple Silicon / M-series) | Double-click `1 Run-macOS-Silicon.command` |
+| macOS (Intel) | Double-click `1 Run-macOS-Intel.command` |
+| Linux | `./1 Run-Linux.sh` in a terminal |
+
+First run only: the script installs dependencies and builds the UI once. Afterwards it starts the app at http://localhost:4000, opens your browser, and auto-saves finished videos to `~/Downloads/AutoEditor`.
+
+**Keep the launcher window open** while you use the app — closing it (or pressing Ctrl+C) stops the server. Requires Node.js on PATH.
+
+### Development mode
+
 ```bash
 npm install
-npm run dev
-```
-
-Open http://localhost:4000 (see the printed URL).
-
-### Production build
-
-```bash
-npm run build
-npm start
+NEXT_PUBLIC_RENDER_URL=http://localhost:4000 npm run dev   # terminal 1 — UI on :3000
+OPEN_BROWSER=1 node server/index.js                        # terminal 2 — backend on :4000
 ```
 
 ### Tests
