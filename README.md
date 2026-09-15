@@ -37,6 +37,10 @@ First run only: the script installs dependencies and builds the UI once. Afterwa
 
 **Keep the launcher window open** while you use the app — closing it (or pressing Ctrl+C) stops the server. Requires Node.js on PATH.
 
+<img src="screenshots/terminal.png" width="460" alt="AutoEditor Mod — terminal" />
+
+Video Guide link: https://youtu.be/F0AKNE4mDjs?si=KKQsVijokqS7zfHF
+
 ### Android (Termux)
 
 The desktop launchers build from source; on Android you use the ready-made `AutoEditor-android.zip` distributable instead:
@@ -53,6 +57,8 @@ bash start.sh
 ```
 
 On first run `start.sh` installs Node.js + ffmpeg, takes a wake-lock (renders survive the screen turning off), and starts the server on port 4000. Open **http://localhost:4000** in the phone's browser. If a phone freezes Termux when the screen locks, set **Settings → Apps → Termux → Battery → Unrestricted**. See [`docs/termux-android-setup.md`](docs/termux-android-setup.md) for the full guide.
+
+Android Video Guide link: https://youtu.be/1DSjtlKI_lA?si=Lp_EJn-UN5jqLtob
 
 ### Development mode
 
