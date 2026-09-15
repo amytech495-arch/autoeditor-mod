@@ -91,3 +91,7 @@ End users just double-click `AutoEditor.exe` (or the equivalent launcher) — se
 ## Changelog
 
 See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history. Current: **Version 1.2**.
+
+## Credits
+
+AutoEditor Mod is a modified version of the original **AutoEditor** by **Siddique** (TryAIToday): https://github.com/codewithsiddique-04/autoeditor
