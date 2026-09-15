@@ -29,6 +29,18 @@ CHANGED — Transport controls
   Skip buttons switched from emoji ⏪/⏩ to ⏮/⏭ symbols for consistent
   rendering across platforms.
 
+CHANGED — Home screen links
+  Footer Discord link (BanongGang) replaced with a GitHub link and icon.
+  Removed the upper-right Discord and "Get the Extension" buttons.
+
+CHANGED — Brand logo
+  New AutoEditor Mod logo applied to the home screen, the browser tab
+  favicon, and the unsupported-screen splash.
+
+CHANGED — Version label
+  Current version (v1.2) shown next to the brand on the home screen and
+  in the browser tab title.
+
 REMOVED — Light-leak effect
   Dropped due to rendering instability. Saved projects that still
   reference it will load without error — the slot simply renders as None.

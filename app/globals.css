@@ -164,30 +164,17 @@ body {
 .projbar--onboard .bar__io { display: none; }
 
 /* Always-present link to the TryAIToday Flow Automator Chrome extension. */
-.ext-link {
-  display: inline-flex; align-items: center; gap: 7px; flex: none;
-  padding: 8px 12px; border-radius: 10px; white-space: nowrap;
-  font-size: 13px; font-weight: 600; text-decoration: none;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  transition: background .15s, border-color .15s, transform .05s;
-}
-.ext-link:hover { background: var(--elev); border-color: var(--muted); color: var(--accent); }
-.ext-link:active { transform: translateY(1px); }
-.ext-link__icon { font-size: 14px; line-height: 1; }
-
 /* Discord community link — same pill shape as the extension link, blurple. */
 .dc-link {
   display: inline-flex; align-items: center; gap: 7px; flex: none;
   padding: 8px 12px; border-radius: 10px; white-space: nowrap;
   font-size: 13px; font-weight: 600; text-decoration: none;
-  color: #c7cdf7;
-  background: rgba(88, 101, 242, .12);
-  border: 1px solid rgba(88, 101, 242, .40);
+  color: var(--text);
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--line);
   transition: background .15s, border-color .15s, transform .05s;
 }
-.dc-link:hover { background: rgba(88, 101, 242, .22); border-color: #5865f2; color: #eef0ff; }
+.dc-link:hover { background: var(--elev); border-color: var(--muted); color: var(--accent); }
 .dc-link:active { transform: translateY(1px); }
 .dc-link__icon { width: 16px; height: 16px; flex: none; }
 
@@ -906,6 +893,13 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 .ph__logo { border-radius: 7px; flex: none; }
 .ph__name { font-weight: 700; font-size: 15.5px; letter-spacing: -0.01em; white-space: nowrap; color: var(--fa-silver-bright); }
 .ph__pre { color: var(--fa-muted); font-weight: 600; }
+.ph__version {
+  display: inline-block; margin-left: 7px; padding: 1px 7px;
+  border-radius: 999px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .05);
+  color: var(--muted); font-size: 11px; font-weight: 600;
+  vertical-align: 2px; letter-spacing: 0;
+}
 .ph__actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 .ph__storage {
   font-family: var(--font-mono); font-size: 12px; font-weight: 650;
@@ -1025,7 +1019,7 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 .ph__empty { color: var(--fa-muted); text-align: center; margin-top: 32px; font-size: 14px; }
 .ph__empty-wrap { display: flex; flex-direction: column; align-items: center; }
 .ph__empty-wrap .ph__empty { margin-top: 40px; }
-.ph__empty-wrap .ph__discord { margin-top: 14px; }
+.ph__empty-wrap .ph__gh { margin-top: 14px; }
 .ph__foot { display: grid; justify-items: center; gap: 12px; margin-top: 44px; padding: 22px 16px 30px; border-top: 1px solid var(--line-soft); }
 .ph__foot-note { color: var(--fa-muted); font-size: 13px; margin: 0; text-align: center; }
 
@@ -1035,9 +1029,9 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
   .ph__brand { flex: 0 1 auto; min-width: 0; }
   .ph__name { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ph__actions { flex-wrap: nowrap; gap: 8px; flex: none; }
-  .dc-link__text, .ext-link__text { display: none; }
-  .dc-link, .ext-link { gap: 0; padding: 9px 10px; }
-  .dc-link__icon, .ext-link__icon { margin: 0; }
+  .dc-link__text { display: none; }
+  .dc-link { gap: 0; padding: 9px 10px; }
+  .dc-link__icon { margin: 0; }
 }
 @media (max-width: 560px) {
   .ph__body { padding-left: 18px; padding-right: 18px; }

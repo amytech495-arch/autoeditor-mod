@@ -5,3 +5,5 @@ out/
 
 # build output
 dist/
+
+.DS_Store

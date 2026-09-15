@@ -23,11 +23,11 @@ function clock(sec) {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-function DiscordLink({ href, title, label, className = "" }) {
+function GitHubLink({ href, title, label, className = "" }) {
   return (
     <a className={`dc-link ${className}`} href={href} target="_blank" rel="noopener noreferrer" title={title}>
       <svg className="dc-link__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-        <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/>
+        <path d="M12 0C5.37 0 0 5.501 0 12.303c0 5.433 3.438 10.043 8.205 11.671.6.113.82-.267.82-.593 0-.293-.01-1.066-.016-2.093-3.338.743-4.042-1.651-4.042-1.651-.546-1.421-1.333-1.8-1.333-1.8-1.089-.763.083-.747.083-.747 1.205.087 1.84 1.267 1.84 1.267 1.07 1.88 2.808 1.336 3.493 1.022.109-.795.419-1.336.761-1.643-2.665-.31-5.467-1.366-5.467-6.08 0-1.343.469-2.441 1.237-3.302-.124-.31-.536-1.56.117-3.253 0 0 1.008-.33 3.301 1.261a11.16 11.16 0 0 1 3.006-.414c1.02.005 2.047.139 3.006.414 2.29-1.591 3.297-1.261 3.297-1.261.653 1.693.243 2.943.119 3.253.77.861 1.235 1.959 1.235 3.302 0 4.721-2.804 5.766-5.477 6.07.43.381.815 1.13.815 2.279 0 1.645-.015 2.971-.015 3.375 0 .328.218.71.826.59C20.565 22.35 24 17.739 24 12.303 24 5.501 18.63 0 12 0z" />
       </svg>
       <span className="dc-link__text">{label}</span>
     </a>
@@ -59,19 +59,9 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
         <div className="ph__bar">
           <div className="ph__brand">
             <img className="ph__logo" src="/logo.svg" alt="" width="26" height="26" />
-            <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod</span>
+            <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod <span className="ph__version">v1.2</span></span>
           </div>
           <div className="ph__actions">
-            <DiscordLink href="https://discord.gg/5sxVBf3kx8" title="Join the TryAIToday Discord" label="Discord" />
-            <a
-              className="ext-link"
-              href="https://chromewebstore.google.com/detail/bcmmekkamenpjoogmegiffgemlgikbgf?utm_source=item-share-cb"
-              target="_blank" rel="noopener noreferrer"
-              title="Get the TryAIToday Flow Automator Chrome extension"
-            >
-              <span className="ext-link__icon" aria-hidden="true">🧩</span>
-              <span className="ext-link__text">Get the Extension</span>
-            </a>
             {storage && storage.quota ? (
               <span className="ph__storage" title="Remaining browser storage for AutoEditor">
                 {fmtBytes(Math.max(0, storage.quota - storage.usage))} left of {fmtBytes(storage.quota)}
@@ -131,7 +121,7 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
         )}
 
         <footer className="ph__foot">
-          <DiscordLink className="ph__discord" href="https://discord.com/users/banong.gang" title="BanongGang on Discord" label="BanongGang" />
+          <GitHubLink className="ph__gh" href="https://github.com/banonggang" title="BanongGang on GitHub" label="BanongGang" />
           <p className="ph__foot-note">Modified AutoEditor</p>
         </footer>
       </div>
