@@ -43,15 +43,15 @@ Video Guide link: https://youtu.be/F0AKNE4mDjs?si=KKQsVijokqS7zfHF
 
 ### Android (Termux)
 
-The desktop launchers build from source; on Android you use the ready-made `AutoEditor-android.zip` distributable instead:
+The desktop launchers build from source; on Android you use the ready-made `AutoEditorModv1-Android.zip` distributable instead:
 
 1. Install **Termux** from the Google Play Store, open it, and run `termux-setup-storage` (tap **Allow**), then `pkg install -y unzip`.
-2. Copy `AutoEditor-android.zip` into the phone's **Download** folder.
+2. Copy `AutoEditorModv1-Android.zip` into the phone's **Download** folder.
 3. Run:
 
 ```bash
 cd ~/storage/downloads
-unzip AutoEditor-android.zip
+unzip AutoEditorModv1-Android.zip
 cd AutoEditor-android
 bash start.sh
 ```
