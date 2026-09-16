@@ -38,8 +38,8 @@ export default function Editor({
   replaceImage, removeImage, fillGap, resizeBoundary,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
   fadeIn, setFadeIn, fadeOut, setFadeOut,
-  motionByName, setMotion, applyMotionAll, applyMotionAlternate, motionAmount, setMotionAmount,
-  fxByName = {}, setFx, applyFxAll, fxAmount, setFxAmount,
+  motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
+  fxByName = {}, setFx, applyFxAll, applyFxMix, fxAmount, setFxAmount,
   videoInfoByName = {}, trimByName = {}, setTrim, volumeByName = {}, setVolume,
   fitByName = {}, setFit,
   trimEnd, setTrimEnd, exportDuration,
@@ -123,7 +123,42 @@ export default function Editor({
     });
   }, []);
 
-  // Gap "+" → pick a file to fill an empty slot / lead-in.
+  const useFavStore = (key) => {
+    const [favs, setFavs] = useState(() => {
+      try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch { return new Set(); }
+    });
+    const toggle = useCallback((id) => {
+      setFavs((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        try { localStorage.setItem(key, JSON.stringify([...next])); } catch { /* ignore */ }
+        return next;
+      });
+    }, [key]);
+    return [favs, toggle];
+  };
+  const [favTransitions, toggleFavTransition] = useFavStore("ae.fav.transitions");
+  const [favMotion, toggleFavMotion] = useFavStore("ae.fav.motion");
+  const [favFx, toggleFavFx] = useFavStore("ae.fav.fx");
+
+  const [mixMotionMode, setMixMotionMode] = useState(false);
+  const [mixMotionPicks, setMixMotionPicks] = useState(() => new Set());
+  const toggleMixMotion = useCallback((id) => {
+    setMixMotionPicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const [fxMixMode, setFxMixMode] = useState(false);
+  const [fxMixPicks, setFxMixPicks] = useState(() => new Set());
+  const toggleFxMix = useCallback((id) => {
+    setFxMixPicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
   const askAdd = useCallback((name) => {
     pending.current = name;
     if (fileInputRef.current) fileInputRef.current.click();
@@ -940,15 +975,26 @@ export default function Editor({
           <div className="transitions__chips">
             {TRANSITION_LIST.map((tr) => {
               const on = mixMode ? mixPicks.has(tr.id) : currentType === tr.id;
+              const fav = favTransitions.has(tr.id);
               return (
-                <button
-                  key={tr.id}
-                  type="button"
-                  className={`trchip ${on ? "is-on" : ""}`}
-                  onClick={() => (mixMode ? toggleMix(tr.id) : pickType(tr.id))}
-                >
-                  <span className="trchip__icon">{tr.icon}</span>{tr.label}
-                </button>
+                <span key={tr.id} className="trchip-wrap">
+                  <button
+                    type="button"
+                    className={`trchip ${on ? "is-on" : ""}`}
+                    onClick={() => (mixMode ? toggleMix(tr.id) : pickType(tr.id))}
+                  >
+                    <span className="trchip__icon">{tr.icon}</span>{tr.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={`trchip-star ${fav ? "is-fav" : ""}`}
+                    onClick={() => toggleFavTransition(tr.id)}
+                    title={fav ? "Remove from favorites" : "Add to favorites"}
+                    aria-label={fav ? "Remove from favorites" : "Add to favorites"}
+                  >
+                    {fav ? "★" : "☆"}
+                  </button>
+                </span>
               );
             })}
           </div>
@@ -998,6 +1044,15 @@ export default function Editor({
               </span>
             </div>
           )}
+
+          <button
+            type="button" className="trall trall--fav"
+            disabled={!favTransitions.size}
+            onClick={() => applyTransitionMix([...favTransitions], clips.map((c) => c.name))}
+            title={favTransitions.size ? "Randomly apply your favorite transitions across all cuts" : "Star some transitions first"}
+          >
+            ★ Apply favorites randomly
+          </button>
         </div>
 
         <div className="panel">
@@ -1020,21 +1075,48 @@ export default function Editor({
         </div>
 
         <div className="panel">
-          <h2 className="panel__h">Advanced Motion Effects</h2>
-          <div className="mini-h">Click an effect to pick it (applies to the selected clip), then use “Apply to all”.</div>
+          <div className="transitions__titlerow">
+            <h2 className="panel__h">Advanced Motion Effects</h2>
+            <button
+              type="button"
+              className={`cap-switch ${mixMotionMode ? "is-on" : ""}`}
+              onClick={() => setMixMotionMode((v) => !v)}
+              aria-pressed={mixMotionMode}
+              title="Randomly apply a set of motion effects across all images"
+            >
+              <span className="cap-switch__box" />
+              Random mix
+            </button>
+          </div>
+          <div className="mini-h" style={{ marginTop: 6 }}>
+            {mixMotionMode
+              ? "Pick the effects to mix, then apply them randomly across all images."
+              : "Click an effect to pick it (applies to the selected clip), then use “Apply to all”."}
+          </div>
           <div className="transitions__chips" style={{ marginTop: 8 }}>
             {MOTION_LIST.map((m) => {
-              const on = currentMotion === m.id;
+              const on = mixMotionMode ? mixMotionPicks.has(m.id) : currentMotion === m.id;
+              const fav = favMotion.has(m.id);
               return (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={`trchip ${on ? "is-on" : ""}`}
-                  onClick={() => pickMotion(m.id)}
-                  title={m.label}
-                >
-                  <span className="trchip__icon">{m.icon}</span>{m.label}
-                </button>
+                <span key={m.id} className="trchip-wrap">
+                  <button
+                    type="button"
+                    className={`trchip ${on ? "is-on" : ""}`}
+                    onClick={() => (mixMotionMode ? toggleMixMotion(m.id) : pickMotion(m.id))}
+                    title={m.label}
+                  >
+                    <span className="trchip__icon">{m.icon}</span>{m.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={`trchip-star ${fav ? "is-fav" : ""}`}
+                    onClick={() => toggleFavMotion(m.id)}
+                    title={fav ? "Remove from favorites" : "Add to favorites"}
+                    aria-label={fav ? "Remove from favorites" : "Add to favorites"}
+                  >
+                    {fav ? "★" : "☆"}
+                  </button>
+                </span>
               );
             })}
           </div>
@@ -1044,35 +1126,102 @@ export default function Editor({
               onChange={(e) => setMotionAmount(+e.target.value)} />
             <span className="trdur__val">{Math.round(motionAmount * 100)}%</span>
           </label>
-          <div className="seg" style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={() => applyMotionAll(currentMotion, imageClips.map((c) => c.name))}
-            >
-              Apply “{motionOf(currentMotion).label}” to all
-            </button>
-          </div>
-          <div className="seg" style={{ marginTop: 6 }}>
-            <button type="button" onClick={() => applyMotionAll("none", imageClips.map((c) => c.name))}>Clear all</button>
-          </div>
+          {!mixMotionMode ? (
+            <>
+              <div className="seg" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => applyMotionAll(currentMotion, imageClips.map((c) => c.name))}
+                >
+                  Apply “{motionOf(currentMotion).label}” to all
+                </button>
+              </div>
+              <div className="seg" style={{ marginTop: 6 }}>
+                <button type="button" onClick={() => applyMotionAll("none", imageClips.map((c) => c.name))}>Clear all</button>
+              </div>
+            </>
+          ) : (
+            <div className="trmix-foot">
+              <span className="trmix-count">
+                {mixMotionPicks.size ? `Picked ${mixMotionPicks.size}` : "All effects"}
+              </span>
+              <span className="trmix-btns">
+                <button
+                  type="button" className="trall trmix-apply"
+                  onClick={() => applyMotionMix(
+                    mixMotionPicks.size ? [...mixMotionPicks] : MOTION_LIST.filter((m) => m.id !== "none").map((m) => m.id),
+                    imageClips.map((c) => c.name),
+                  )}
+                >
+                  Apply random mix to images
+                </button>
+                <button
+                  type="button" className="mbtn mbtn--danger trmix-clear"
+                  onClick={() => {
+                    setMixMotionPicks(new Set());
+                    applyMotionAll("none", imageClips.map((c) => c.name));
+                  }}
+                  title="Clear the applied random mix"
+                >
+                  Clear
+                </button>
+              </span>
+            </div>
+          )}
+
+          <button
+            type="button" className="trall trall--fav"
+            disabled={!favMotion.size}
+            onClick={() => applyMotionMix([...favMotion], imageClips.map((c) => c.name))}
+            title={favMotion.size ? "Randomly apply your favorite motion effects across all images" : "Star some effects first"}
+          >
+            ★ Apply favorites randomly
+          </button>
         </div>
 
         <div className="panel">
-          <h2 className="panel__h">Image Effects</h2>
-          <div className="mini-h">Click an effect to pick it (applies to the selected clip), then use “Apply to all”.</div>
+          <div className="transitions__titlerow">
+            <h2 className="panel__h">Image Effects</h2>
+            <button
+              type="button"
+              className={`cap-switch ${fxMixMode ? "is-on" : ""}`}
+              onClick={() => setFxMixMode((v) => !v)}
+              aria-pressed={fxMixMode}
+              title="Randomly apply a set of image effects across all images"
+            >
+              <span className="cap-switch__box" />
+              Random mix
+            </button>
+          </div>
+          <div className="mini-h" style={{ marginTop: 6 }}>
+            {fxMixMode
+              ? "Pick the effects to mix, then apply them randomly across all images."
+              : "Click an effect to pick it (applies to the selected clip), then use “Apply to all”."}
+          </div>
           <div className="transitions__chips" style={{ marginTop: 8 }}>
             {FX_LIST.map((f) => {
-              const on = currentFx === f.id;
+              const on = fxMixMode ? fxMixPicks.has(f.id) : currentFx === f.id;
+              const fav = favFx.has(f.id);
               return (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={`trchip ${on ? "is-on" : ""}`}
-                  onClick={() => pickFx(f.id)}
-                  title={f.label}
-                >
-                  <span className="trchip__icon">{f.icon}</span>{f.label}
-                </button>
+                <span key={f.id} className="trchip-wrap">
+                  <button
+                    type="button"
+                    className={`trchip ${on ? "is-on" : ""}`}
+                    onClick={() => (fxMixMode ? toggleFxMix(f.id) : pickFx(f.id))}
+                    title={f.label}
+                  >
+                    <span className="trchip__icon">{f.icon}</span>{f.label}
+                  </button>
+                  <button
+                    type="button"
+                    className={`trchip-star ${fav ? "is-fav" : ""}`}
+                    onClick={() => toggleFavFx(f.id)}
+                    title={fav ? "Remove from favorites" : "Add to favorites"}
+                    aria-label={fav ? "Remove from favorites" : "Add to favorites"}
+                  >
+                    {fav ? "★" : "☆"}
+                  </button>
+                </span>
               );
             })}
           </div>
@@ -1082,17 +1231,57 @@ export default function Editor({
               onChange={(e) => setFxAmount(+e.target.value)} />
             <span className="trdur__val">{Math.round(fxAmount * 100)}%</span>
           </label>
-          <div className="seg" style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={() => applyFxAll(currentFx, imageClips.map((c) => c.name))}
-            >
-              Apply “{fxOf(currentFx).label}” to all
-            </button>
-          </div>
-          <div className="seg" style={{ marginTop: 6 }}>
-            <button type="button" onClick={() => applyFxAll("none", imageClips.map((c) => c.name))}>Clear all</button>
-          </div>
+          {!fxMixMode ? (
+            <>
+              <div className="seg" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => applyFxAll(currentFx, imageClips.map((c) => c.name))}
+                >
+                  Apply “{fxOf(currentFx).label}” to all
+                </button>
+              </div>
+              <div className="seg" style={{ marginTop: 6 }}>
+                <button type="button" onClick={() => applyFxAll("none", imageClips.map((c) => c.name))}>Clear all</button>
+              </div>
+            </>
+          ) : (
+            <div className="trmix-foot">
+              <span className="trmix-count">
+                {fxMixPicks.size ? `Picked ${fxMixPicks.size}` : "All effects"}
+              </span>
+              <span className="trmix-btns">
+                <button
+                  type="button" className="trall trmix-apply"
+                  onClick={() => applyFxMix(
+                    fxMixPicks.size ? [...fxMixPicks] : FX_LIST.filter((f) => f.id !== "none").map((f) => f.id),
+                    imageClips.map((c) => c.name),
+                  )}
+                >
+                  Apply random mix to images
+                </button>
+                <button
+                  type="button" className="mbtn mbtn--danger trmix-clear"
+                  onClick={() => {
+                    setFxMixPicks(new Set());
+                    applyFxAll("none", imageClips.map((c) => c.name));
+                  }}
+                  title="Clear the applied random mix"
+                >
+                  Clear
+                </button>
+              </span>
+            </div>
+          )}
+
+          <button
+            type="button" className="trall trall--fav"
+            disabled={!favFx.size}
+            onClick={() => applyFxMix([...favFx], imageClips.map((c) => c.name))}
+            title={favFx.size ? "Randomly apply your favorite image effects across all images" : "Star some effects first"}
+          >
+            ★ Apply favorites randomly
+          </button>
         </div>
 
         <div className="panel">

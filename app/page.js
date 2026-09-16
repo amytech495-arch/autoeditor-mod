@@ -542,6 +542,14 @@ export default function Home() {
   const applyFxAll = useCallback((id, names) => {
     setFxByName(() => { const next = {}; for (const n of names) next[n] = id; return next; });
   }, []);
+  const applyMotionMix = useCallback((picks, names) => {
+    const assigned = mixTransitions(picks, names.length);
+    setMotionByName(() => { const next = {}; names.forEach((n, i) => { next[n] = assigned[i]; }); return next; });
+  }, []);
+  const applyFxMix = useCallback((picks, names) => {
+    const assigned = mixTransitions(picks, names.length);
+    setFxByName(() => { const next = {}; names.forEach((n, i) => { next[n] = assigned[i]; }); return next; });
+  }, []);
   // Random mix: assign each cut a transition drawn randomly from `picks`
   // (no back-to-back repeats). One commit = one undo step.
   const applyTransitionMix = useCallback((picks, clipNames) => {
@@ -1371,9 +1379,9 @@ export default function Home() {
           fadeIn={fadeIn} setFadeIn={setFadeIn}
           fadeOut={fadeOut} setFadeOut={setFadeOut}
           motionByName={motionByName} setMotion={setMotion}
-          applyMotionAll={applyMotionAll} applyMotionAlternate={applyMotionAlternate}
+          applyMotionAll={applyMotionAll} applyMotionAlternate={applyMotionAlternate} applyMotionMix={applyMotionMix}
           motionAmount={motionAmount} setMotionAmount={setMotionAmount}
-          fxByName={fxByName} setFx={setFx} applyFxAll={applyFxAll}
+          fxByName={fxByName} setFx={setFx} applyFxAll={applyFxAll} applyFxMix={applyFxMix}
           fxAmount={fxAmount} setFxAmount={setFxAmount}
           videoInfoByName={videoInfoByName}
           trimByName={trimByName} setTrim={setTrim}
