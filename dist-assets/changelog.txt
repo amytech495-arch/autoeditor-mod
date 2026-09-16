@@ -11,7 +11,9 @@ NEW — Storage badge tooltip
   Hovering the storage pill on the home screen explains how much browser
   storage AutoEditor uses, why it matters, and what happens when it fills.
 
-CHANGED — Transport timing layout
+NEW — Random mix + Favorites stars (Motion & Image Effects)
+  The Advanced Motion Effects and Image Effects panels now mirror the
+  transitions panel: flip "Random mix" to pick any set of effects)Skip
   Current time now sits beside the Go-to-start button and total duration
   beside the Go-to-end button, with the old "/" separator removed.
 
