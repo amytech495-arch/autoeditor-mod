@@ -761,9 +761,9 @@ export default function Editor({
                 <button
                   className="hbtn" onClick={() => setTimelineZoom(Math.min(4, timelineZoom + 0.5))} title="Zoom in"
                 >+</button>
-                <button
-                  className="hbtn" onClick={() => setTimelineZoom(1)} title="Reset zoom" style={{ fontSize: 10, padding: '0 6px' }}
-                >100%</button>
+<button
+  className="hbtn" onClick={() => setTimelineZoom(1)} title="Reset zoom"
+>🔍</button>
               </div>
               {active && (
                 <div className="nowclip">

@@ -34,6 +34,17 @@ function GitHubLink({ href, title, label, className = "" }) {
   );
 }
 
+function YouTubeLink({ href, title, label, className = "" }) {
+  return (
+    <a className={`dc-link ${className}`} href={href} target="_blank" rel="noopener noreferrer" title={title}>
+      <svg className="dc-link__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+      </svg>
+      <span className="dc-link__text">{label}</span>
+    </a>
+  );
+}
+
 export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDelete, storage }) {
   const [menuId, setMenuId] = useState(null); // project id with its ⋮ menu open
 
@@ -125,7 +136,10 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
         )}
 
         <footer className="ph__foot">
-          <GitHubLink className="ph__gh" href="https://github.com/banonggang" title="BanongGang on GitHub" label="BanongGang" />
+          <div className="ph__foot-links">
+            <YouTubeLink className="ph__yt" href="https://www.youtube.com/@banong.gangOG" title="BanongGang on YouTube" label="visit channel" />
+            <GitHubLink className="ph__gh" href="https://github.com/banonggang" title="BanongGang on GitHub" label="BanongGang" />
+          </div>
           <p className="ph__foot-note">Modified <a href="https://www.youtube.com/@TryAIToday" target="_blank" rel="noopener noreferrer" className="ph__foot-link">TryAIToday</a> AutoEditor</p>
         </footer>
       </div>
