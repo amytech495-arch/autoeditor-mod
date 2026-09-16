@@ -126,7 +126,7 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
 
         <footer className="ph__foot">
           <GitHubLink className="ph__gh" href="https://github.com/banonggang" title="BanongGang on GitHub" label="BanongGang" />
-          <p className="ph__foot-note">Modified AutoEditor</p>
+          <p className="ph__foot-note">Modified <a href="https://www.youtube.com/@TryAIToday" target="_blank" rel="noopener noreferrer" className="ph__foot-link">TryAIToday</a> AutoEditor</p>
         </footer>
       </div>
     </main>

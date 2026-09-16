@@ -1031,7 +1031,9 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 .ph__empty-wrap .ph__empty { margin-top: 40px; }
 .ph__empty-wrap .ph__gh { margin-top: 14px; }
 .ph__foot { display: grid; justify-items: center; gap: 12px; margin-top: 44px; padding: 22px 16px 30px; border-top: 1px solid var(--line-soft); }
-.ph__foot-note { color: var(--fa-muted); font-size: 13px; margin: 0; text-align: center; }
+.ph__foot-note { color: var(--fa-muted); font-size: 11px; margin: 0; text-align: center; }
+.ph__foot-link { color: var(--fa-silver-bright); text-decoration: none; }
+.ph__foot-link:hover { text-decoration: underline; }
 
 /* Mobile: keep the whole navbar on one row — icon-only links + a smaller brand. */
 @media (max-width: 640px) {
