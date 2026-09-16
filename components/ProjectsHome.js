@@ -59,12 +59,16 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
         <div className="ph__bar">
           <div className="ph__brand">
             <img className="ph__logo" src="/logo.svg" alt="" width="26" height="26" />
-            <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod <span className="ph__version">v1.2</span></span>
+            <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod <span className="ph__version">v1.3</span></span>
           </div>
           <div className="ph__actions">
             {storage && storage.quota ? (
-              <span className="ph__storage" title="Remaining browser storage for AutoEditor">
+              <span className="ph__storage" tabIndex={0} role="tooltip" aria-label="Browser storage used by AutoEditor">
                 {fmtBytes(Math.max(0, storage.quota - storage.usage))} left of {fmtBytes(storage.quota)}
+                <span className="ph__storage-tip">
+                  <b>Storage balance</b>
+                  Projects, media files and captures are saved in your browser's storage so you can keep working offline. If it fills up, the oldest/lowest-quality items get evicted first.
+                </span>
               </span>
             ) : null}
           </div>

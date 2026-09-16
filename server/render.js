@@ -7,7 +7,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import ffmpegStatic from "ffmpeg-static";
 import { xfadeName, MIN_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from "./transitions.js";
-import { buildCaptionBurn, CAPTION_FONT } from "./captions.js";
+import { buildCaptionBurn, buildTextOverlayBurn, CAPTION_FONT } from "./captions.js";
 
 // Crash-safe module dir: import.meta.url works in ESM (dev); in the bundled/SEA
 // build it's empty, so fall back to cwd (prod overrides the paths via env anyway).
@@ -230,7 +230,7 @@ function buildVideoChain(clips, paths, { width, height, fps, transitions, transi
   return { inputs, parts, last };
 }
 
-function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false }, filterFiles) {
+function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false }, filterFiles) {
   const n = clips.length;
   const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds });
   let last = vEnd;
@@ -242,6 +242,7 @@ function graphArgs({ clips, paths, audioName, width, height, fps, transitions, t
     last = overlayChain({ parts, last, overlayIdx: ovIdx, width, height, blendMode: overlayBlendMode, opacity: overlayOpacity });
   }
   if (capChain) { parts.push(`[${last}]${capChain}[vcap]`); last = "vcap"; }
+  if (textChain) { parts.push(`[${last}]${textChain}[vtxt]`); last = "vtxt"; }
   const vf = fadeVideo(fadeIn, fadeOut, total);
   if (vf.length) { parts.push(`[${last}]${vf.join(",")}[vf]`); last = "vf"; }
   // Static image overlay on top of everything (above captions and fades).
@@ -349,6 +350,7 @@ function buildConcatAudioArgs({ audioName, audioClips, fadeIn, fadeOut, total },
 function buildSegmentedPlan(spec, io) {
   const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.08, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
     captions, captionStyle = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none",
+    textOverlays,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false } = spec;
   const { paths, audioName, encoder = "libx264", audible, overlayName = null, watermarkName = null } = io;
@@ -405,6 +407,19 @@ function buildSegmentedPlan(spec, io) {
         for (const f of files) capFiles.push(f);
       }
     }
+    // Per-segment text overlays, burned like captions (rebased to segment time).
+    if (Array.isArray(textOverlays) && textOverlays.length) {
+      const A = segOff[s], B = segOff[s] + segDur, segTexts = [];
+      for (const it of textOverlays) {
+        if ((it.end ?? Number.MAX_SAFE_INTEGER) <= A || (it.start ?? 0) >= B) continue;
+        segTexts.push({ ...it, start: Math.max(0, (it.start ?? 0) - A), end: Math.min(segDur, (it.end ?? segDur) - A) });
+      }
+      if (segTexts.length) {
+        const { filter, files } = buildTextOverlayBurn(segTexts, width, height, `s${s}_`);
+        parts.push(`[${last}]${filter}[vtxt]`); last = "vtxt";
+        for (const f of files) capFiles.push(f);
+      }
+    }
     // Fades belong only at the true ends of the whole video: fade-in on the first segment,
     // fade-out on the last.
     const segVf = fadeVideo(s === 0 ? fadeIn : 0, s === chunks.length - 1 ? fadeOut : 0, segDur);
@@ -451,7 +466,7 @@ export function buildRenderPlan(spec, io) {
   const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.08, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false } = spec;
-  const { paths, audioName, capChain = "", encoder = "libx264", audible, overlayName = null, watermarkName = null } = io;
+  const { paths, audioName, capChain = "", textChain = "", encoder = "libx264", audible, overlayName = null, watermarkName = null } = io;
   const total = clips.length ? clips[clips.length - 1].start + clips[clips.length - 1].duration : 0;
   const hasTransition = Array.isArray(transitions) && clips.length >= 2 &&
     transitions.some((t, i) => i > 0 && t && t !== "cut");
@@ -469,7 +484,7 @@ export function buildRenderPlan(spec, io) {
   const useGraph = hasTransition || hasMotion || hasVideo || hasOverlay || hasWatermark;
   // Big graph timelines are split into segments + a join to dodge the OS limits.
   if (useGraph && clips.length > SEGMENT_MAX) return buildSegmentedPlan(spec, io);
-  const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, encoder,
+  const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, textChain, encoder,
     overlayName, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
     watermarkName, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled };
   const filterFiles = [];
@@ -543,7 +558,7 @@ function makeBlack(dir, width, height) {
 // into `dir` by multer (image fields keyed by clip name, plus "audio").
 // Returns { paths, audioName, capChain } for buildRenderPlan.
 export async function writeInputs(dir, spec, fileMap) {
-  const { clips, width, height, captions, captionStyle = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none" } = spec;
+  const { clips, width, height, captions, captionStyle = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none", textOverlays } = spec;
 
   const audioName = fileMap["audio"];
   const overlayName = fileMap["overlay"] || null;
@@ -561,19 +576,26 @@ export async function writeInputs(dir, spec, fileMap) {
   }
   await fs.writeFile(path.join(dir, "concat.txt"), concat);
 
-  let capChain = "";
+  let capChain = "", textChain = "";
+  if (Array.isArray(captions) && captions.length || Array.isArray(textOverlays) && textOverlays.length) {
+    await fs.copyFile(FONT_SRC, path.join(dir, CAPTION_FONT));
+  }
   if (Array.isArray(captions) && captions.length) {
     const { filter, files } = buildCaptionBurn(captions, captionStyle, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation);
-    await fs.copyFile(FONT_SRC, path.join(dir, CAPTION_FONT));
     for (const f of files) await fs.writeFile(path.join(dir, f.name), f.text);
     capChain = filter;
+  }
+  if (Array.isArray(textOverlays) && textOverlays.length) {
+    const { filter, files } = buildTextOverlayBurn(textOverlays, width, height);
+    for (const f of files) await fs.writeFile(path.join(dir, f.name), f.text);
+    textChain = filter;
   }
 
   // Which video clips actually have audio (so we only mix real streams in).
   const audible = await Promise.all(clips.map((c, i) =>
     (c.gap || !isVideoPath(paths[i])) ? Promise.resolve(false) : probeHasAudio(dir, paths[i])));
 
-  return { paths, audioName, capChain, audible, overlayName, watermarkName };
+  return { paths, audioName, capChain, textChain, audible, overlayName, watermarkName };
 }
 
 // Parse ffmpeg -progress output → fraction in [0,1].

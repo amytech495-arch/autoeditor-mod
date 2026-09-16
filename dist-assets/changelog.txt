@@ -1,3 +1,27 @@
+Version 1.3
+=========
+NEW — Timed text overlays
+  Place unlimited titles, labels, or call-outs anywhere on the frame with
+  a new Text overlays panel. Each overlay is independent — set its text,
+  start/end time (in seconds), position, size, color, and opacity. Renders
+  identically in the live preview, the browser (WebCodecs) export, and the
+  local FFmpeg backend. Overlays persist across project saves.
+
+NEW — Storage badge tooltip
+  Hovering the storage pill on the home screen explains how much browser
+  storage AutoEditor uses, why it matters, and what happens when it fills.
+
+CHANGED — Transport timing layout
+  Current time now sits beside the Go-to-start button and total duration
+  beside the Go-to-end button, with the old "/" separator removed.
+
+FIXED — Tall-video export on Chrome
+  Exports taller than ~2 megapixels per frame (e.g. a 1216×2160 vertical
+  video at 60fps) no longer fail with an AVC level error — the encoder now
+  automatically selects the correct H.264 level (up to L5.2) for the frame
+  size and frame rate instead of always defaulting to level 4.0.
+
+
 Version 1.2
 =========
 RELEASE — Published on GitHub

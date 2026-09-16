@@ -11,6 +11,8 @@ import {
   CAPTION_STYLE_LIST, CAPTION_SIZES, CAPTION_ANIMATION_LIST,
   captionCueAt, drawCaption, captionFontPx, captionLineHeightDefault, drawWatermark,
 } from "../lib/captions";
+import { drawTextOverlays } from "../lib/textOverlay";
+
 
 function tc(t) {
   if (!isFinite(t) || t < 0) t = 0;
@@ -65,6 +67,7 @@ export default function Editor({
   watermarkOpacity, setWatermarkOpacity,
   watermarkEnabled, setWatermarkEnabled,
   onWatermark,
+  textOverlays = [], addTextOverlay, updateTextOverlay, removeTextOverlay,
 }) {
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
@@ -346,6 +349,9 @@ export default function Editor({
       if (cue) drawCaption(ctx, cue.text, W, H, captionStyle, captionFontPx(H, captionSize, captionFontScale), captionLineHeight, captionAnimation, t - cue.start, cue.end - cue.start);
     }
 
+    // Timed text overlays (titles/labels) — same layer as WebCodecs + ffmpeg burn.
+    if (Array.isArray(textOverlays) && textOverlays.length) drawTextOverlays(ctx, textOverlays, W, H, t);
+
     // Scene fades (opening / ending).
     if (fadeIn > 0 && t < fadeIn) {
       ctx.globalAlpha = Math.max(0, 1 - t / fadeIn);
@@ -366,7 +372,7 @@ export default function Editor({
       fadeIn, fadeOut, duration, exportDuration, playing, videoInfoByName, videoParams, volumeByName,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
       overlayEnabled, overlayUrl, overlayOpacity, overlayBlendMode, overlayDuration,
-      watermarkEnabled, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity]);
+      watermarkEnabled, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, textOverlays]);
 
   useEffect(() => { drawRef.current = draw; }, [draw]);
   useEffect(() => { timeRef.current = time; }, [time]);
@@ -685,14 +691,9 @@ export default function Editor({
           </div>
 
           <div className="transport">
-            <div className="transport__end">
-              <div className="time">
-                <span className="time__now">{tc(time)}</span>
-                <span className="time__sep">/</span>
-                <span className="time__total">{tc(exportDuration)}</span>
-              </div>
-            </div>
+            <div className="transport__end" />
             <div className="transport__center">
+              <span className="time__now">{tc(time)}</span>
               <button
                 className="skip" onClick={goToStart}
                 title="Go to start (0:00)" aria-label="Go to start"
@@ -704,6 +705,7 @@ export default function Editor({
                 className="skip" onClick={goToEnd}
                 title="Go to end" aria-label="Go to end"
               >⏭</button>
+              <span className="time__total">{tc(exportDuration)}</span>
             </div>
             <div className="transport__end transport__end--right">
               <div className="history">
@@ -1544,6 +1546,91 @@ export default function Editor({
               </div>
             </div>
           )}
+
+        </div>
+        {/* --- Text overlays --- */}
+        <div className="panel video-overlay">
+          <h2 className="panel__h">Text overlays</h2>
+          <div className="panel__body">
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
+              Timed titles, labels, or call-outs layered over the video.
+            </div>
+            <button type="button" className="trall" onClick={addTextOverlay}>+ Add text overlay</button>
+
+            {Array.isArray(textOverlays) && textOverlays.length ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+                {textOverlays.map((o) => (
+                  <div key={o.id} className="text-overlay" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
+                    <div className="trdur" style={{ marginBottom: 6 }}>
+                      <span style={{ width: 60 }}>Text</span>
+                      <input
+                        type="text" value={o.text}
+                        placeholder="Overlay text"
+                        onChange={(e) => updateTextOverlay(o.id, { text: e.target.value })}
+                      />
+                      <button type="button" onClick={() => removeTextOverlay(o.id)} aria-label="Remove text overlay"
+                        title="Remove"
+                        style={{ marginLeft: -4, border: 0, background: "none", cursor: "pointer", fontFamily: "system-ui", fontSize: 14, color: "var(--muted)", lineHeight: 1, padding: 0, alignSelf: "center", flexShrink: 0 }}>⊗</button>
+                    </div>
+
+                    <div className="trdur">
+                      <span>Start</span>
+                      <input type="text" value={o.start}
+                        placeholder="Seconds"
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!Number.isNaN(v)) updateTextOverlay(o.id, { start: Math.min(Math.max(0, v), o.end) });
+                        }} />
+                      <b className="trdur__val">s</b>
+                    </div>
+                    <div className="trdur">
+                      <span>End</span>
+                      <input type="text" value={o.end}
+                        placeholder="Seconds"
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!Number.isNaN(v)) updateTextOverlay(o.id, { end: Math.max(v, o.start) });
+                        }} />
+                      <b className="trdur__val">s</b>
+                    </div>
+                    <div className="trdur">
+                      <span>X</span>
+                      <input type="range" min={0} max={1} step={0.01} value={o.x}
+                        onChange={(e) => updateTextOverlay(o.id, { x: +e.target.value })} />
+                      <b className="trdur__val">{Math.round(o.x * 100)}%</b>
+                    </div>
+                    <div className="trdur">
+                      <span>Y</span>
+                      <input type="range" min={0} max={1} step={0.01} value={o.y}
+                        onChange={(e) => updateTextOverlay(o.id, { y: +e.target.value })} />
+                      <b className="trdur__val">{Math.round(o.y * 100)}%</b>
+                    </div>
+                    <div className="trdur">
+                      <span>Size</span>
+                      <input type="range" min={0.005} max={0.25} step={0.005} value={o.size}
+                        onChange={(e) => updateTextOverlay(o.id, { size: +e.target.value })} />
+                      <b className="trdur__val">{Math.round(o.size * 100)}%</b>
+                    </div>
+                    <div className="trdur">
+                      <span>Opacity</span>
+                      <input type="range" min={0} max={1} step={0.05} value={o.opacity}
+                        onChange={(e) => updateTextOverlay(o.id, { opacity: +e.target.value })} />
+                      <b className="trdur__val">{Math.round(o.opacity * 100)}%</b>
+                    </div>
+                    <div className="trdur">
+                      <span>Color</span>
+                      <input type="color" value={o.color}
+                        onChange={(e) => updateTextOverlay(o.id, { color: e.target.value })} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+                No text overlays yet.
+              </div>
+            )}
+          </div>
         </div>
 
       </aside>

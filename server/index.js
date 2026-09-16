@@ -159,7 +159,7 @@ app.post("/render", newJob, oneAtATime, upload.any(), async (req, res) => {
     // passes + a join pass). Run them in order; aggregate progress by frame count.
     const launch = async (encoder) => {
       let plan;
-      try { plan = buildRenderPlan(spec, { paths, audioName, capChain, encoder, audible, overlayName, watermarkName }); }
+      try { plan = buildRenderPlan(spec, { paths, audioName, capChain, textChain, encoder, audible, overlayName, watermarkName }); }
       catch (e) { job.status = "error"; job.error = String(e.message || e); broadcast(job, { error: job.error }); endListeners(job); clearActive(req.jobId); return; }
       const passes = plan.passes || [{ args: plan.args, filterFiles: plan.filterFiles, output: "output.mp4", total: plan.total }];
       const grand = passes.reduce((s, p) => s + (p.total || 0), 0) || 1;

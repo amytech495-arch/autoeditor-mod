@@ -11,6 +11,8 @@ import { renderVideo, cancelRender, getActiveRender, reconnectRender, probeBacke
 import { renderWebCodecs, webCodecsCanRender, pickRenderProfile, startKeepAwake, crfTargetBitrate } from "../lib/webcodecsRender";
 import { DEFAULT_TRANSITION_DURATION, mixTransitions } from "../lib/transitions";
 import { parseTranscript } from "../lib/captions";
+import { makeTextOverlay, drawTextOverlays, textOverlayFontPx } from "../lib/textOverlay";
+
 import Dropzone from "../components/Dropzone";
 import Editor from "../components/Editor";
 import ProjectsHome from "../components/ProjectsHome";
@@ -159,6 +161,7 @@ export default function Home() {
   const [captionRaw, setCaptionRaw] = useState(null); // uploaded transcript text
   const [captionName, setCaptionName] = useState(null);
   const [captionsOn, setCaptionsOn] = useState(false);
+  const [textOverlays, setTextOverlays] = useState([]);
   // Image ↔ narration auto-sync: snap each image to its line's ACTUAL speech onset
   // in the voiceover (see lib/syncAudio.js) instead of trusting filename timestamps.
   const [syncOn, setSyncOn] = useState(false);
@@ -220,6 +223,10 @@ export default function Home() {
       setOverlayEnabled(true);
     } catch (e) { setError(e.message); }
   }, []);
+
+  const addTextOverlay = useCallback(() => setTextOverlays((p) => [...p, makeTextOverlay(crypto.randomUUID ? crypto.randomUUID() : `to-${Date.now()}`)]), []);
+  const updateTextOverlay = useCallback((id, patch) => setTextOverlays((p) => p.map((o) => (o.id === id ? { ...o, ...patch } : o))), []);
+  const removeTextOverlay = useCallback((id) => setTextOverlays((p) => p.filter((o) => o.id !== id)), []);
 
   const onWatermark = useCallback(async (files) => {
     const file = files[0];
@@ -980,6 +987,7 @@ export default function Home() {
         audioLayers,
         overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
         watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
+        textOverlays,
         onProgress: setProgress,
       });
       setOutUrl(URL.createObjectURL(blob));
@@ -1403,6 +1411,10 @@ export default function Home() {
           watermarkY={watermarkY} setWatermarkY={setWatermarkY}
           watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity}
           watermarkEnabled={watermarkEnabled} setWatermarkEnabled={setWatermarkEnabled}
+          textOverlays={textOverlays}
+          addTextOverlay={addTextOverlay}
+          updateTextOverlay={updateTextOverlay}
+          removeTextOverlay={removeTextOverlay}
           onWatermark={onWatermark}
         />
       )}

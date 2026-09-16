@@ -148,3 +148,33 @@ export function buildCaptionBurn(cues, styleId, width, height, sizeId, lineHeigh
 export function sanitizeCueText(text) {
   return String(text).replace(/\\/g, "").replace(/%/g, "percent");
 }
+
+// ---- render: timed text overlays (user-placed titles/labels) ----
+// One centered drawtext per item, enabled between its start/end, so the MP4
+// matches the canvas drawTextOverlays preview (center-anchored x/y fractions,
+// font height = size × frame height). Returns the filter chain + textfiles.
+export function buildTextOverlayBurn(items, width, height, prefix = "") {
+  if (!Array.isArray(items) || !items.length) return { filter: "", files: [] };
+  const files = [];
+  const filters = [];
+  let li = 0;
+  for (const it of items) {
+    const text = sanitizeCueText(String(it.text ?? "").trim());
+    if (!text) continue;
+    const fs = Math.max(12, Math.round(height * Math.min(0.5, Math.max(0.01, it.size ?? 0.06))));
+    const x = ((it.x ?? 0.5) * width).toFixed(2);
+    const y = ((it.y ?? 0.5) * height).toFixed(2);
+    const s = (it.start ?? 0).toFixed(3), e = (it.end ?? 0).toFixed(3);
+    const color = String(it.color || "#ffffff").replace("#", "");
+    const alpha = Math.min(1, Math.max(0, it.opacity ?? 1)).toFixed(3);
+    const name = `${prefix}txt${li}.txt`;
+    files.push({ name, text });
+    const raw =
+      `drawtext=fontfile=${CAPTION_FONT}:textfile=${name}:fontsize=${fs}` +
+      `:fontcolor=0x${color}@${alpha}:x=${x}-text_w/2:y=${y}-text_h/2` +
+      `:enable=between(t,${s},${e})`;
+    filters.push(escapeFilter(raw));
+    li++;
+  }
+  return { filter: filters.join(","), files };
+}
