@@ -90,7 +90,7 @@ End users just double-click `AutoEditor.exe` (or the equivalent launcher) — se
 
 ## Changelog
 
-See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history. Current: **Version 1.2**.
+See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history. Current: **Version 1.3**.
 
 ## Credits
 
