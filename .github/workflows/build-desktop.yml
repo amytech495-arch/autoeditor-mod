@@ -1,0 +1,64 @@
+name: Build desktop distributables (Windows + macOS)
+
+# Produces the desktop zips you can't build on a single machine:
+#   - AutoEditor.zip       (Windows, SEA exe)    — built on Windows
+#   - AutoEditor-mac-arm64.zip (Apple Silicon)   — built on macOS arm64
+# The mac-x64 build is produced locally on an Intel Mac.
+# Run manually from the repo's Actions tab, or on a version tag (v*).
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to attach zips to (e.g. v1.4). Empty = build only."
+        required: false
+        type: string
+  push:
+    tags: ["v*"]
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: win
+            build: node build-dist.mjs
+          - runner: macos-14 # Apple Silicon (arm64)
+            arch: mac-arm64
+            build: node build-dist-mac.mjs
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend deps
+        run: npm install
+
+      - name: Install server deps (pulls the platform ffmpeg binary)
+        run: npm install
+        working-directory: server
+
+      - name: Build distributable
+        run: ${{ matrix.build }}
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoEditor-${{ matrix.arch }}
+          path: dist/AutoEditor*.zip
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="${{ github.event.inputs.release_tag }}"; fi
+          if [ -z "$TAG" ]; then echo "No target release; skipping attach."; exit 0; fi
+          gh release upload "$TAG" dist/AutoEditor*.zip --clobber
