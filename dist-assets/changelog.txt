@@ -1,3 +1,24 @@
+Version 1.4
+=========
+NEW — Sound effects
+  A new Sound effects panel with six built-in sounds (Whoosh, Boom,
+  Correct, Click, Shutter, Subtle) plus your own .mp3/.wav uploads. Pick a
+  sound, then click the FX track to drop a marker; drag a marker to move
+  it, and click one to set its volume or remove it. A master volume fades
+  the whole effects bed. Sounds preview in the editor and mix into both the
+  browser (WebCodecs) and FFmpeg exports.
+
+NEW — Background music
+  A BG track for music beds. Add an audio layer, then click the BG track to
+  place it; drag clips to move them, pull either edge to trim, and click a
+  clip to set its volume and fade in/out. Mixed into both exports.
+
+CHANGED — Timeline
+  The voiceover waveform lane is no longer drawn on the timeline. The
+  voiceover still plays in the preview and renders in the final export —
+  only the lane is hidden.
+
+
 Version 1.3
 =========
 NEW — Timed text overlays

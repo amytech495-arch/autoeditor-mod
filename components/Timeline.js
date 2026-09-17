@@ -42,7 +42,7 @@ function Waveform({ peaks, style }) {
 // The signature element: a scrubbable track with a fixed label gutter. Clips,
 // waveform, playhead and click-to-seek all share the track's coordinate space.
 export default function Timeline({
-  clips, imageEls, duration, time, peaks, activeName, badClips,
+  clips, imageEls, duration, time, activeName, badClips,
   transitionsByName, motionByName, selectedName, onSelect,
   onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onResizeBoundary,
   trimEnd, onTrimChange,
@@ -320,7 +320,6 @@ export default function Timeline({
       <div className="tl__row">
         <div className="tl__gutter">
           <span className="tl__tag">V</span>
-          <span className="tl__tag tl__tag--audio">VO</span>
           <span className="tl__tag tl__tag--fx">FX</span>
           <span className="tl__tag tl__tag--bg">BG</span>
         </div>
@@ -389,13 +388,6 @@ export default function Timeline({
                 </div>
               );
             })}
-          </div>
-
-          <div className="tl__lane tl__lane--audio tl__scrub" onPointerDown={onScrubDown}>
-            <div className="tl__audio-main">
-              <Waveform peaks={peaks} />
-              <span className="tl__audio-label">Voiceover</span>
-            </div>
           </div>
 
           <div
