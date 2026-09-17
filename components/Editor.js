@@ -30,6 +30,16 @@ function clock(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Fade envelope for a BG clip at time t (seconds) within the clip, 0..duration.
+function fadeGain(t, clip) {
+  const dur = clip.duration || 0;
+  const fi = clip.fadeIn || 0, fo = clip.fadeOut || 0;
+  let g = 1;
+  if (fi > 0 && t < fi) g *= Math.max(0, t / fi);
+  if (fo > 0 && t > dur - fo) g *= Math.max(0, (dur - t) / fo);
+  return g;
+}
+
 export default function Editor({
   clips, imageEls, audioUrl, duration, peaks, dims,
   aspect, setAspect, fps, setFps,
@@ -51,8 +61,8 @@ export default function Editor({
   captionAnimation, setCaptionAnimation,
   captionName, captionError, onCaptionFile,
   syncOn, setSyncOn, syncStatus, syncAligned,
-  audioLayers, setAudioLayers, updateAudioLayer, removeAudioLayer, moveAudioLayer, addAudioLayer,
-  addAudioClipToLayer, removeAudioClip, updateAudioClip,
+  bgClips = [], selectedBg, uploadBg, addBgClip, moveBgClip, setBgVolume, updateBgClip, removeBgClip,
+  bgOpen, setBgOpen,
   sfx = [], addSfx, moveSfx, setSfxVolume, removeSfx, uploadSfx, removeSfxUpload,
   selectedSound, setSelectedSound, sfxUploads = [], sfxOpen, setSfxOpen,
   sfxMaster = 1, setSfxMaster,
@@ -75,7 +85,7 @@ export default function Editor({
 }) {
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
-  const audioLayerRefs = useRef({}); // layerId -> { clipId -> <audio> element }
+  const bgAudioRefs = useRef(new Map()); // bg clip id -> <audio> element (preview playback)
   const overlayVideoRef = useRef(null); // overlay video element for preview
   const watermarkImgRef = useRef(null); // watermark image element for preview
   const fxBufRef = useRef(null); // offscreen canvas for the image-effect filter pass
@@ -84,11 +94,12 @@ export default function Editor({
   const fileInputRef = useRef(null);
   const capInputRef = useRef(null);
   const replaceInputRef = useRef(null);
-  const audioLayerInputRef = useRef(null);
+  const bgInputRef = useRef(null);
   const sfxInputRef = useRef(null);
   const sfxAudioRefs = useRef(new Map()); // marker id -> <audio> element (preview playback)
   const sfxPrevRef = useRef(0);           // playhead time at the previous RAF frame, for crossing detection
   const sfxResolvedRef = useRef([]);      // latest resolved markers (read by the RAF loop)
+  const bgClipsRef = useRef([]);          // latest BG clips (read by the RAF loop)
   const overlayInputRef = useRef(null);
   const pending = useRef(null); // gap-fill target name
   const trimEndRef = useRef(exportDuration);
@@ -123,6 +134,7 @@ export default function Editor({
     [sfx, sfxUrlFor]
   );
   useEffect(() => { sfxResolvedRef.current = sfxResolved; }, [sfxResolved]);
+  useEffect(() => { bgClipsRef.current = bgClips; }, [bgClips]);
 
   // One <audio> element per placed marker, reused across frames. Created lazily and
   // volume-scaled by the lane's master gain; removed when its marker disappears.
@@ -147,6 +159,31 @@ export default function Editor({
       if (el) el.volume = Math.max(0, Math.min(1, (s.volume == null ? 0.8 : s.volume) * sfxMaster));
     }
   }, [sfxResolved, sfxMaster]);
+
+  // One <audio> element per BG clip, reused across frames; created lazily and
+  // volume-scaled per clip, removed when the clip disappears.
+  useEffect(() => {
+    const refs = bgAudioRefs.current;
+    const live = new Set(bgClips.map((c) => c.id));
+    for (const [id, el] of [...refs]) {
+      if (!live.has(id)) { try { el.pause(); el.src = ""; } catch (_) {} refs.delete(id); }
+    }
+    for (const c of bgClips) {
+      let el = refs.get(c.id);
+      if (el && el.dataset.url !== (c.url || "")) {
+        try { el.pause(); el.src = ""; } catch (_) {}
+        refs.delete(c.id); el = null;
+      }
+      if (!el && c.url) {
+        el = new Audio(c.url);
+        el.preload = "auto";
+        el.dataset.url = c.url;
+        refs.set(c.id, el);
+      }
+      if (el) el.volume = Math.max(0, Math.min(1, c.volume == null ? 0.8 : c.volume));
+    }
+  }, [bgClips]);
+
   const [inspect, setInspect] = useState(null);   // slot name open in the inspector
   const [dismissedWarn, setDismissedWarn] = useState(() => new Set()); // hidden warning texts
   const [timelineZoom, setTimelineZoom] = useState(1); // 0.5 to 4
@@ -218,12 +255,12 @@ export default function Editor({
     pending.current = null;
   }, [fillGap]);
 
-  const onPickAudioLayer = useCallback(async (e) => {
+  const onPickBg = useCallback(async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!file || !file.type.startsWith("audio/")) return;
-    if (addAudioLayer) await addAudioLayer([file]);
-  }, [addAudioLayer]);
+    if (uploadBg) await uploadBg(file);
+  }, [uploadBg]);
 
   // Clip inspector: click a clip → preview → optionally pick a replacement,
   // preview it, then Apply (or Remove the image).
@@ -493,28 +530,21 @@ export default function Editor({
           if (el) { try { el.currentTime = 0; } catch (_) {} el.play().catch(() => {}); }
         }
       }
-      // Sync audio layer clips to main audio position
-      for (const [layerId, clipRefs] of Object.entries(audioLayerRefs.current)) {
-        const layer = audioLayers.find((l) => l.id === layerId);
-        if (!layer || layer.muted) {
-          for (const clipEl of Object.values(clipRefs)) {
-            if (!clipEl.paused) clipEl.pause();
+      // Sync BG clips to the main audio position.
+      const mainTime = a.currentTime;
+      for (const c of bgClipsRef.current) {
+        const el = bgAudioRefs.current.get(c.id);
+        if (!el) continue;
+        const clipTime = mainTime - c.start;
+        if (clipTime >= 0 && clipTime < c.duration) {
+          const target = (c.offset || 0) + clipTime;
+          if (Math.abs(el.currentTime - target) > 0.1) {
+            try { el.currentTime = target; } catch (_) {}
           }
-          continue;
-        }
-        const mainTime = a.currentTime;
-        for (const clip of layer.clips) {
-          const clipEl = clipRefs[clip.id];
-          if (!clipEl) continue;
-          const clipTime = mainTime - clip.start;
-          if (clipTime >= 0 && clipTime < clip.duration) {
-            if (Math.abs(clipEl.currentTime - clipTime) > 0.1) {
-              try { clipEl.currentTime = clipTime; } catch (_) {}
-            }
-            if (clipEl.paused) clipEl.play().catch(() => {});
-          } else if (!clipEl.paused) {
-            clipEl.pause();
-          }
+          el.volume = Math.max(0, Math.min(1, (c.volume == null ? 0.8 : c.volume) * fadeGain(clipTime, c)));
+          if (el.paused) el.play().catch(() => {});
+        } else if (!el.paused) {
+          el.pause();
         }
       }
       // Sync overlay video
@@ -541,6 +571,7 @@ export default function Editor({
       cancelAnimationFrame(rafRef.current);
       setTime(a.currentTime);
       for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
+      for (const el of bgAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
     };
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onStop);
@@ -551,94 +582,7 @@ export default function Editor({
       a.removeEventListener("ended", onStop);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [audioUrl, audioLayers, overlayEnabled, overlayUrl, overlayDuration, overlayLoop]);
-
-  // Create/cleanup audio layer elements (now per-clip)
-  // Track clip properties to detect changes
-  const clipPropsRef = useRef(new Map()); // clipId -> { start, duration, url }
-
-  useEffect(() => {
-    const currentLayerIds = new Set(audioLayers.map((l) => l.id));
-    // Remove old layer elements
-    for (const [layerId, clipRefs] of Object.entries(audioLayerRefs.current)) {
-      if (!currentLayerIds.has(layerId)) {
-        for (const [clipId, el] of Object.entries(clipRefs)) {
-          try { el.pause(); el.src = ""; } catch (_) {}
-        }
-        delete audioLayerRefs.current[layerId];
-        clipPropsRef.current.delete(layerId);
-        continue;
-      }
-      const layer = audioLayers.find((l) => l.id === layerId);
-      if (!layer) continue;
-      const currentClipIds = new Set(layer.clips.map((c) => c.id));
-      
-      if (!clipPropsRef.current.has(layerId)) {
-        clipPropsRef.current.set(layerId, new Map());
-      }
-      const layerProps = clipPropsRef.current.get(layerId);
-      
-      // Remove old clip elements
-      for (const [clipId, el] of Object.entries(clipRefs)) {
-        if (!currentClipIds.has(clipId)) {
-          try { el.pause(); el.src = ""; } catch (_) {}
-          delete clipRefs[clipId];
-          layerProps.delete(clipId);
-        }
-      }
-      // Create new clip elements or recreate if props changed
-      if (!audioLayerRefs.current[layerId]) {
-        audioLayerRefs.current[layerId] = {};
-      }
-      for (const clip of layer.clips) {
-        const prevProps = layerProps.get(clip.id);
-        const propsChanged = prevProps && (prevProps.start !== clip.start || prevProps.duration !== clip.duration || prevProps.url !== clip.url);
-        
-        if (!clipRefs[clip.id] || propsChanged) {
-          // Recreate if new or props changed
-          if (clipRefs[clip.id]) {
-            try { clipRefs[clip.id].pause(); clipRefs[clip.id].src = ""; } catch (_) {}
-          }
-          if (clip.url) {
-            const el = new Audio(clip.url);
-            el.volume = clip.volume * layer.volume;
-            el.muted = layer.muted;
-            el.preload = "auto";
-            clipRefs[clip.id] = el;
-          }
-        } else if (clipRefs[clip.id]) {
-          const el = clipRefs[clip.id];
-          el.volume = clip.volume * layer.volume;
-          el.muted = layer.muted;
-        }
-        // Update tracked props
-        layerProps.set(clip.id, { start: clip.start, duration: clip.duration, url: clip.url });
-      }
-      // Clean up deleted clip props
-      for (const [clipId] of layerProps) {
-        if (!currentClipIds.has(clipId)) {
-          layerProps.delete(clipId);
-        }
-      }
-    }
-    // Create new layer elements
-    for (const layer of audioLayers) {
-      if (!audioLayerRefs.current[layer.id]) {
-        audioLayerRefs.current[layer.id] = {};
-        clipPropsRef.current.set(layer.id, new Map());
-        for (const clip of layer.clips) {
-          if (clip.url) {
-            const el = new Audio(clip.url);
-            el.volume = clip.volume * layer.volume;
-            el.muted = layer.muted;
-            el.preload = "auto";
-            audioLayerRefs.current[layer.id][clip.id] = el;
-            clipPropsRef.current.get(layer.id).set(clip.id, { start: clip.start, duration: clip.duration, url: clip.url });
-          }
-        }
-      }
-    }
-  }, [audioLayers]);
+  }, [audioUrl, overlayEnabled, overlayUrl, overlayDuration, overlayLoop]);
 
   const toggle = useCallback(() => {
     const a = audioRef.current;
@@ -663,21 +607,17 @@ export default function Editor({
     else {
       pendingSeekRef.current = null;
       try { a.currentTime = c; } catch (_) {}
-      // Seek audio layer clips
-      for (const [layerId, clipRefs] of Object.entries(audioLayerRefs.current)) {
-        const layer = audioLayers.find((l) => l.id === layerId);
-        if (!layer || layer.muted) continue;
-        for (const clip of layer.clips) {
-          const clipEl = clipRefs[clip.id];
-          if (!clipEl) continue;
-          const clipTime = c - clip.start;
-          if (clipTime >= 0 && clipTime < clip.duration) {
-            try { clipEl.currentTime = clipTime; } catch (_) {}
-          }
+      // Reposition BG clips that fall under the new playhead.
+      for (const clip of bgClips) {
+        const el = bgAudioRefs.current.get(clip.id);
+        if (!el) continue;
+        const clipTime = c - clip.start;
+        if (clipTime >= 0 && clipTime < clip.duration) {
+          try { el.currentTime = (clip.offset || 0) + clipTime; } catch (_) {}
         }
       }
     }
-  }, [duration, audioLayers]);
+  }, [duration, bgClips]);
 
   const goToStart = useCallback(() => {
     const a = audioRef.current;
@@ -715,12 +655,8 @@ export default function Editor({
     const a = audioRef.current;
     scrubResumeRef.current = !!(a && !a.paused);
     if (a && !a.paused) { try { a.pause(); } catch (_) {} }
-    // Pause audio layer clips
-    for (const clipRefs of Object.values(audioLayerRefs.current)) {
-      for (const clipEl of Object.values(clipRefs)) {
-        if (!clipEl.paused) { try { clipEl.pause(); } catch (_) {} }
-      }
-    }
+    // Pause BG clips
+    for (const el of bgAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
     // Silence any in-flight sound effects while scrubbing.
     for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
   }, []);
@@ -728,21 +664,22 @@ export default function Editor({
     const a = audioRef.current;
     // Rebase crossing detection at the release position (no retro-fire on resume).
     if (a) sfxPrevRef.current = a.currentTime;
-    if (a && scrubResumeRef.current) { scrubResumeRef.current = false; a.play().catch(() => {}); }
-    // Resume audio layer clips
-    for (const [layerId, clipRefs] of Object.entries(audioLayerRefs.current)) {
-      const layer = audioLayers.find((l) => l.id === layerId);
-      if (!layer || layer.muted) continue;
-      for (const clip of layer.clips) {
-        const clipEl = clipRefs[clip.id];
-        if (!clipEl) continue;
+    const wasPlaying = scrubResumeRef.current;
+    scrubResumeRef.current = false;
+    if (a && wasPlaying) a.play().catch(() => {});
+    // Resume BG clips only when playback is actually resuming — a plain click on
+    // the scrub strip repositions the playhead and must stay silent.
+    if (a && wasPlaying) {
+      for (const clip of bgClips) {
+        const el = bgAudioRefs.current.get(clip.id);
+        if (!el) continue;
         const clipTime = a.currentTime - clip.start;
         if (clipTime >= 0 && clipTime < clip.duration) {
-          try { clipEl.currentTime = clipTime; clipEl.play().catch(() => {}); } catch (_) {}
+          try { el.currentTime = (clip.offset || 0) + clipTime; el.play().catch(() => {}); } catch (_) {}
         }
       }
     }
-  }, [audioLayers]);
+  }, [bgClips]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -907,11 +844,13 @@ export default function Editor({
           onResizeBoundary={resizeBoundary}
           trimEnd={trimEnd}
           onTrimChange={setTrimEnd}
-          audioLayers={audioLayers}
-          updateAudioClip={updateAudioClip}
+          bgClips={bgClips}
+          onBgAdd={addBgClip}
+          onBgMove={moveBgClip}
+          onBgTrim={updateBgClip}
+          onBgOpen={setBgOpen}
           zoom={timelineZoom}
           scrollRef={timelineScrollRef}
-          onAddAudioClip={(layerId, files, start) => addAudioClipToLayer && addAudioClipToLayer(layerId, files, start)}
           sfx={sfx}
           onSfxAdd={addSfx}
           onSfxMove={moveSfx}
@@ -1600,127 +1539,75 @@ export default function Editor({
         </div>
 
         <div className="panel audio-layers">
-          <h2 className="panel__h">Audio Layers</h2>
-          <div className="mini-h">Add background music or additional voice tracks. Drag clips on the timeline to position them.</div>
+          <h2 className="panel__h">Background Music</h2>
+          <div className="mini-h">Add an audio layer, then click the BG track on the timeline to place it. Drag clips to move, click one to set its volume.</div>
           <input
             type="file" accept="audio/*" hidden
-            ref={audioLayerInputRef}
-            onChange={onPickAudioLayer}
+            ref={bgInputRef}
+            onChange={onPickBg}
           />
           <button
             type="button"
             className="trall"
-            onClick={() => audioLayerInputRef.current && audioLayerInputRef.current.click()}
+            onClick={() => bgInputRef.current && bgInputRef.current.click()}
           >
             + Add Audio Layer
           </button>
-          {audioLayers && audioLayers.length > 0 && (
-            <div className="audio-layers-list" style={{ marginTop: 12 }}>
-              {audioLayers.map((layer) => (
-                <div key={layer.id} className="audio-layer-item" style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <div className="tl__audio-label" style={{ flex: 1, fontSize: 12 }}>
-                      {layer.name}
-                      {layer.solo && <span className="tl__solo-badge" style={{ marginLeft: 4, padding: "1px 4px", background: "var(--accent)", color: "white", borderRadius: 3, fontSize: 9 }}>S</span>}
-                    </div>
-                    <label className="trdur" style={{ flex: 1, minWidth: 180, maxWidth: "none" }}>
-                      <span style={{ fontSize: 11, marginRight: 8 }}>Vol</span>
-                      <input
-                        type="range" min={0} max={1} step={0.05}
-                        value={layer.volume}
-                        onChange={(e) => updateAudioLayer && updateAudioLayer(layer.id, { volume: +e.target.value })}
-                        style={{ flex: 1, minWidth: 100 }}
-                      />
-                      <span className="trdur__val" style={{ fontSize: 11, marginLeft: 6, minWidth: 36 }}>{Math.round(layer.volume * 100)}%</span>
-                    </label>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button
-                        type="button"
-                        className={`cap-switch ${layer.muted ? "is-on" : ""}`}
-                        onClick={() => updateAudioLayer && updateAudioLayer(layer.id, { muted: !layer.muted })}
-                        title={layer.muted ? "Unmute" : "Mute"}
-                        style={{ width: 32, height: 20 }}
-                      >
-                        <span className="cap-switch__box" />
-                      </button>
-                      <button
-                        type="button"
-                        className={`cap-switch ${layer.solo ? "is-on" : ""}`}
-                        onClick={() => {
-                          const newLayers = audioLayers.map((l) => l.id === layer.id ? { ...l, solo: !l.solo, muted: false } : { ...l, solo: false, muted: !l.solo });
-                          setAudioLayers && setAudioLayers(newLayers);
-                        }}
-                        title={layer.solo ? "Unsolo" : "Solo"}
-                        style={{ width: 32, height: 20 }}
-                      >
-                        <span className="cap-switch__box" />
-                      </button>
-                      <button
-                        type="button"
-                        className="mbtn mbtn--danger"
-                        onClick={() => removeAudioLayer && removeAudioLayer(layer.id)}
-                        title="Remove layer"
-                        style={{ padding: "2px 8px", fontSize: 11 }}
-                      >✕</button>
-                    </div>
+          {selectedBg && (
+            <div className="bg-ready" title="Click the BG lane on the timeline to place this audio">
+              <span className="bg-ready__name">{selectedBg.name}</span>
+              <span className="bg-ready__hint">Click the BG track to place</span>
+            </div>
+          )}
+          {bgClips.length > 0 && (
+            <div className="bg-list">
+              {bgClips.map((clip) => {
+                const maxFade = Math.max(0.1, Math.min(3, clip.duration / 2));
+                return (
+                <div key={clip.id} className="bg-list__item">
+                  <div className="bg-list__row">
+                    <button
+                      type="button"
+                      className="bg-list__name"
+                      title="Open volume, fades and trim"
+                      onClick={() => setBgOpen && setBgOpen(clip.id)}
+                    >{clip.name}</button>
+                    <span className="bg-list__meta">{clock(clip.start)} · {clip.duration.toFixed(1)}s</span>
+                    <button
+                      type="button" className="sfxrow__del" title="Remove"
+                      onClick={(e) => { e.stopPropagation(); removeBgClip && removeBgClip(clip.id); }}
+                    >✕</button>
                   </div>
-                  {layer.clips && layer.clips.length > 0 && (
-                    <div style={{ marginTop: 4 }}>
-                      {layer.clips.map((clip) => (
-                        <div key={clip.id} className="audio-clip-item" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: 8, background: "var(--bg2)", borderRadius: 4, marginBottom: 6, fontSize: 11, minWidth: 0 }}>
-                          <span style={{ flex: "1 1 100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 500 }}>
-                            {clip.name} ({clip.duration.toFixed(1)}s)
-                          </span>
-                          <label className="trdur" style={{ flex: "1 1 180px", maxWidth: "none", minWidth: 180 }}>
-                            <span style={{ marginRight: 8 }}>Vol</span>
-                            <input
-                              type="range" min={0} max={1} step={0.05}
-                              value={clip.volume}
-                              onChange={(e) => updateAudioClip && updateAudioClip(layer.id, clip.id, { volume: +e.target.value })}
-                              style={{ flex: 1, minWidth: 100 }}
-                            />
-                            <span className="trdur__val" style={{ fontSize: 10, marginLeft: 6, minWidth: 36 }}>{Math.round(clip.volume * 100)}%</span>
-                          </label>
-                          <label className="trdur" style={{ flex: "1 1 180px", maxWidth: "none", minWidth: 180 }}>
-                            <span style={{ marginRight: 8 }}>Start</span>
-                            <input
-                              type="range" min={0} max={duration} step={0.1}
-                              value={clip.start}
-                              onChange={(e) => updateAudioClip && updateAudioClip(layer.id, clip.id, { start: +e.target.value })}
-                              style={{ flex: 1, minWidth: 100 }}
-                            />
-                            <input
-                              type="number" min={0} max={Math.round(duration)} step={0.1}
-                              value={+clip.start.toFixed(1)}
-                              onChange={(e) => {
-                                const v = parseFloat(e.target.value);
-                                if (!Number.isNaN(v)) {
-                                  updateAudioClip && updateAudioClip(layer.id, clip.id, { start: Math.min(duration, Math.max(0, v)) });
-                                }
-                              }}
-                              title="Type the exact start time in seconds"
-                              style={{
-                                width: 56, padding: "2px 4px", fontSize: 10,
-                                fontFamily: "var(--font-mono)", textAlign: "right",
-                                color: "var(--text)", background: "var(--elev)",
-                                border: "1px solid var(--line)", borderRadius: 4,
-                              }}
-                            />
-                            <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 4 }}>s</span>
-                          </label>
-                          <button
-                            type="button"
-                            className="mbtn mbtn--danger"
-                            onClick={() => removeAudioClip && removeAudioClip(layer.id, clip.id)}
-                            title="Remove clip"
-                            style={{ padding: "4px 8px", fontSize: 10 }}
-                          >✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <label className="bg-list__ctl" title="Clip volume">
+                    <span>Vol</span>
+                    <input
+                      type="range" min={0} max={1} step={0.05}
+                      value={clip.volume}
+                      onChange={(e) => setBgVolume && setBgVolume(clip.id, +e.target.value)}
+                    />
+                    <span className="bg-list__val">{Math.round(clip.volume * 100)}%</span>
+                  </label>
+                  <label className="bg-list__ctl" title="Fade in">
+                    <span>In</span>
+                    <input
+                      type="range" min={0} max={maxFade} step={0.1}
+                      value={Math.min(clip.fadeIn || 0, maxFade)}
+                      onChange={(e) => updateBgClip && updateBgClip(clip.id, { fadeIn: +e.target.value })}
+                    />
+                    <span className="bg-list__val">{(clip.fadeIn || 0).toFixed(1)}s</span>
+                  </label>
+                  <label className="bg-list__ctl" title="Fade out">
+                    <span>Out</span>
+                    <input
+                      type="range" min={0} max={maxFade} step={0.1}
+                      value={Math.min(clip.fadeOut || 0, maxFade)}
+                      onChange={(e) => updateBgClip && updateBgClip(clip.id, { fadeOut: +e.target.value })}
+                    />
+                    <span className="bg-list__val">{(clip.fadeOut || 0).toFixed(1)}s</span>
+                  </label>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -2176,6 +2063,61 @@ export default function Editor({
                   onClick={() => { removeSfx && removeSfx(s.id); setSfxOpen && setSfxOpen(null); }}
                 >Remove</button>
                 <button className="mbtn" onClick={() => setSfxOpen && setSfxOpen(null)}>Done</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {(() => {
+        if (bgOpen == null) return null;
+        const c = bgClips.find((x) => x.id === bgOpen);
+        if (!c) return null;
+        const maxFade = Math.max(0.1, Math.min(3, c.duration / 2));
+        return (
+          <div className="modal" role="dialog" aria-modal="true" onClick={() => setBgOpen && setBgOpen(null)}>
+            <div className="modal__card" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal__head">
+                <span className="modal__title">
+                  {c.name} <span className="modal__at">· {clock(c.start)}</span>
+                </span>
+                <button className="modal__x" onClick={() => setBgOpen && setBgOpen(null)} aria-label="Close">✕</button>
+              </div>
+              <div className="modal__vol">
+                <span className="modal__motion-label">Volume</span>
+                <div className="modal__slider">
+                  <input
+                    type="range" min={0} max={1} step={0.05} value={c.volume}
+                    onChange={(e) => setBgVolume && setBgVolume(c.id, +e.target.value)}
+                  />
+                  <span className="trdur__val">{Math.round(c.volume * 100)}%</span>
+                </div>
+              </div>
+              <div className="modal__vol">
+                <span className="modal__motion-label">Fade in</span>
+                <div className="modal__slider">
+                  <input
+                    type="range" min={0} max={maxFade} step={0.1} value={Math.min(c.fadeIn || 0, maxFade)}
+                    onChange={(e) => updateBgClip && updateBgClip(c.id, { fadeIn: +e.target.value })}
+                  />
+                  <span className="trdur__val">{(c.fadeIn || 0).toFixed(1)}s</span>
+                </div>
+              </div>
+              <div className="modal__vol">
+                <span className="modal__motion-label">Fade out</span>
+                <div className="modal__slider">
+                  <input
+                    type="range" min={0} max={maxFade} step={0.1} value={Math.min(c.fadeOut || 0, maxFade)}
+                    onChange={(e) => updateBgClip && updateBgClip(c.id, { fadeOut: +e.target.value })}
+                  />
+                  <span className="trdur__val">{(c.fadeOut || 0).toFixed(1)}s</span>
+                </div>
+              </div>
+              <div className="modal__actions" style={{ marginTop: 14 }}>
+                <button
+                  className="mbtn mbtn--danger"
+                  onClick={() => { removeBgClip && removeBgClip(c.id); }}
+                >Remove</button>
+                <button className="mbtn" onClick={() => setBgOpen && setBgOpen(null)}>Done</button>
               </div>
             </div>
           </div>

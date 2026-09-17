@@ -142,7 +142,7 @@ app.post("/render", newJob, oneAtATime, upload.any(), async (req, res) => {
     const fileMap = {};
     for (const f of req.files) fileMap[f.fieldname] = f.filename;
 
-    const { paths, audioName, capChain, audible, overlayName, watermarkName, sfxClips } = await writeInputs(req.jobDir, spec, fileMap);
+    const { paths, audioName, capChain, textChain, audible, overlayName, watermarkName, sfxClips } = await writeInputs(req.jobDir, spec, fileMap);
 
     const job = {
       dir: req.jobDir, proc: null, total: 0,

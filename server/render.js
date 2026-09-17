@@ -230,6 +230,23 @@ function buildVideoChain(clips, paths, { width, height, fps, transitions, transi
   return { inputs, parts, last };
 }
 
+// Filter prefix for one SFX/BG clip: BG clips carry a trim in-point + play length
+// and optional fades; plain FX markers omit all of them (whole file, no envelope).
+function sfxClipFilters(s) {
+  let out = "";
+  if (Number.isFinite(s.offset) || Number.isFinite(s.duration)) {
+    out = `atrim=start=${(s.offset || 0).toFixed(3)}`;
+    if (Number.isFinite(s.duration)) out += `:duration=${(+s.duration).toFixed(3)}`;
+    out += ",asetpts=PTS-STARTPTS,";
+  }
+  const fin = +s.fadeIn || 0, fout = +s.fadeOut || 0;
+  if (fin > 0) out += `afade=t=in:st=0:d=${fin.toFixed(3)},`;
+  if (fout > 0 && Number.isFinite(s.duration)) {
+    out += `afade=t=out:st=${Math.max(0, (+s.duration) - fout).toFixed(3)}:d=${fout.toFixed(3)},`;
+  }
+  return out;
+}
+
 function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, sfxClips = [] }, filterFiles) {
   const n = clips.length;
   const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds });
@@ -279,7 +296,8 @@ function graphArgs({ clips, paths, audioName, width, height, fps, transitions, t
     const startMs = Math.round((s.at || 0) * 1000);
     const vol = Math.max(0, Math.min(1, s.volume == null ? 0.8 : +s.volume));
     const lbl = `sfx${k}`;
-    parts.push(`[${sfxBase + k}:a]volume=${vol.toFixed(3)},adelay=${startMs}|${startMs}[${lbl}]`);
+    const clip = sfxClipFilters(s);
+    parts.push(`[${sfxBase + k}:a]${clip}volume=${vol.toFixed(3)},adelay=${startMs}|${startMs}[${lbl}]`);
     vAudio.push(`[${lbl}]`);
   }
   let amap;
@@ -336,7 +354,8 @@ function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fa
     const idx = ai++;
     const startMs = Math.round((s.at || 0) * 1000);
     const vol = Math.max(0, Math.min(1, s.volume == null ? 0.8 : +s.volume));
-    parts.push(`[${idx}:a]volume=${vol.toFixed(3)},adelay=${startMs}|${startMs}[sfx${k}]`);
+    const clip = sfxClipFilters(s);
+    parts.push(`[${idx}:a]${clip}volume=${vol.toFixed(3)},adelay=${startMs}|${startMs}[sfx${k}]`);
     vAudio.push(`[sfx${k}]`);
   }
   const af = fadeAudio(fadeIn, fadeOut, total);
@@ -619,7 +638,16 @@ export async function writeInputs(dir, spec, fileMap) {
   const audible = await Promise.all(clips.map((c, i) =>
     (c.gap || !isVideoPath(paths[i])) ? Promise.resolve(false) : probeHasAudio(dir, paths[i])));
 
-  return { paths, audioName, capChain, textChain, audible, overlayName, watermarkName };
+  // SFX-lane markers and BG-lane music clips both arrive as `sfx` entries, each
+  // uploaded under a `sfx_<id>` field. Resolve them to on-disk paths for mixing.
+  const sfxClips = (Array.isArray(spec.sfx) ? spec.sfx : [])
+    .map((s) => ({
+      id: s.id, path: fileMap[`sfx_${s.id}`], at: s.at, volume: s.volume,
+      offset: s.offset, duration: s.duration, fadeIn: s.fadeIn, fadeOut: s.fadeOut,
+    }))
+    .filter((s) => s.path);
+
+  return { paths, audioName, capChain, textChain, audible, overlayName, watermarkName, sfxClips };
 }
 
 // Parse ffmpeg -progress output → fraction in [0,1].

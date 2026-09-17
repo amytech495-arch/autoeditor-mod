@@ -122,11 +122,13 @@ export default function Home() {
   const [audioUrl, setAudioUrl] = useState(null);
   const [audioDuration, setAudioDuration] = useState(0);
   const [peaks, setPeaks] = useState([]);
-  // Audio layers with multiple clips per layer (BGM, SFX, etc.)
-  // Each layer: { id, name, volume, muted, solo, clips: [{ id, file, url, name, start, duration, peaks, volume }] }
-  const [audioLayers, setAudioLayers] = useState([]);
-  const [nextAudioLayerId, setNextAudioLayerId] = useState(1);
-  const [nextAudioClipId, setNextAudioClipId] = useState(1);
+  // Background-music (BG) lane: uploaded audio placed on the timeline, each clip
+  // movable with its own waveform and volume. Replaces the old multi-layer system.
+  // Each: { id, name, file, url, start, duration, peaks, volume }
+  const [bgClips, setBgClips] = useState([]);
+  const [selectedBg, setSelectedBg] = useState(null); // { name, file, url, duration, peaks } ready to place
+  const [bgOpen, setBgOpen] = useState(null); // clip id open in the edit modal
+  const bgIdRef = useRef(1);
   // Sound effects placed on the timeline's FX lane (library presets or uploads).
   // Each: { id, name, src, at, volume } where src is { kind:"lib", file } or
   // { kind:"upload", mediaId }. sfxUploads holds the decoded blob for uploads.
@@ -217,7 +219,7 @@ export default function Home() {
       setAudioFile(file);
       setAudioUrl(URL.createObjectURL(file));
       setAudioDuration(d);
-      getWaveformPeaks(file).then(setPeaks);
+      getWaveformPeaks(file, 1000).then(setPeaks);
     } catch (e) { setError(e.message); }
   }, []);
 
@@ -247,110 +249,58 @@ export default function Home() {
     setWatermarkEnabled(true);
   }, []);
 
-  // Add an additional audio layer (BGM, SFX, etc.)
-  const addAudioLayer = useCallback(async (files) => {
-    const file = files[0];
+  // --- Background music (BG lane) -------------------------------------------
+  // Pick a file: read its duration + a dense waveform, then hold it as the pending
+  // clip. A click on the BG lane drops a copy where the pointer is.
+  const uploadBg = useCallback(async (file) => {
     if (!file) return;
     setError(null);
     try {
       const d = await getAudioDuration(file);
-      const peaks = await getWaveformPeaks(file);
-      const layerId = `al${nextAudioLayerId}`;
-      const clipId = `ac${nextAudioClipId}`;
-      setNextAudioLayerId((n) => n + 1);
-      setNextAudioClipId((n) => n + 1);
-      setAudioLayers((prev) => [...prev, {
-        id: layerId,
-        name: `Layer ${prev.length + 1}`,
-        volume: 0.5,
-        muted: false,
-        solo: false,
-        clips: [{
-          id: clipId,
-          file,
-          url: URL.createObjectURL(file),
-          name: file.name,
-          start: 0,
-          duration: d,
-          peaks,
-          volume: 1,
-        }],
-      }]);
+      const peaks = await getWaveformPeaks(file, 1000);
+      setSelectedBg({ name: file.name, file, url: URL.createObjectURL(file), duration: d, peaks });
     } catch (e) { setError(e.message); }
-  }, [nextAudioLayerId, nextAudioClipId]);
+  }, []);
 
-  const addAudioClipToLayer = useCallback(async (layerId, files, start) => {
-    const file = files[0];
-    if (!file) return;
-    setError(null);
-    try {
-      const d = await getAudioDuration(file);
-      const peaks = await getWaveformPeaks(file);
-      const clipId = `ac${nextAudioClipId}`;
-      setNextAudioClipId((n) => n + 1);
-      setAudioLayers((prev) => prev.map((layer) => {
-        if (layer.id !== layerId) return layer;
-        return {
-          ...layer,
-          clips: [...layer.clips, {
-            id: clipId,
-            file,
-            url: URL.createObjectURL(file),
-            name: file.name,
-            start: Math.max(0, +start || 0), // hover position on the timeline (draggable later)
-            duration: d,
-            peaks,
-            volume: 1,
-          }],
-        };
-      }));
-    } catch (e) { setError(e.message); }
-  }, [nextAudioClipId]);
+  const addBgClip = useCallback((at) => {
+    if (!selectedBg) return;
+    const id = `bg${bgIdRef.current++}`;
+    setBgClips((prev) => [...prev, {
+      id,
+      name: selectedBg.name,
+      file: selectedBg.file,
+      url: URL.createObjectURL(selectedBg.file),
+      start: Math.max(0, +at || 0),
+      sourceDuration: selectedBg.duration,
+      offset: 0,
+      duration: selectedBg.duration,
+      fadeIn: 0,
+      fadeOut: 0,
+      peaks: selectedBg.peaks,
+      volume: 0.8,
+    }]);
+  }, [selectedBg]);
 
-  const removeAudioLayer = useCallback((id) => {
-    setAudioLayers((prev) => {
-      const layer = prev.find((l) => l.id === id);
-      if (layer) {
-        layer.clips.forEach((clip) => { if (clip.url) URL.revokeObjectURL(clip.url); });
-      }
-      return prev.filter((l) => l.id !== id);
+  const moveBgClip = useCallback((id, start) => {
+    setBgClips((prev) => prev.map((c) => (c.id === id ? { ...c, start: Math.max(0, +start || 0) } : c)));
+  }, []);
+
+  const setBgVolume = useCallback((id, v) => {
+    setBgClips((prev) => prev.map((c) => (c.id === id ? { ...c, volume: Math.min(1, Math.max(0, +v || 0)) } : c)));
+  }, []);
+
+  // Update a BG clip: trim (`offset`/`duration`), volume, or fades.
+  const updateBgClip = useCallback((id, updates) => {
+    setBgClips((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+  }, []);
+
+  const removeBgClip = useCallback((id) => {
+    setBgClips((prev) => {
+      const c = prev.find((x) => x.id === id);
+      if (c && c.url) { try { URL.revokeObjectURL(c.url); } catch (_) {} }
+      return prev.filter((x) => x.id !== id);
     });
-  }, []);
-
-  const removeAudioClip = useCallback((layerId, clipId) => {
-    setAudioLayers((prev) => prev.map((layer) => {
-      if (layer.id !== layerId) return layer;
-      const clip = layer.clips.find((c) => c.id === clipId);
-      if (clip && clip.url) URL.revokeObjectURL(clip.url);
-      return { ...layer, clips: layer.clips.filter((c) => c.id !== clipId) };
-    }));
-  }, []);
-
-  const updateAudioLayer = useCallback((id, updates) => {
-    setAudioLayers((prev) => prev.map((l) => l.id === id ? { ...l, ...updates } : l));
-  }, []);
-
-  const updateAudioClip = useCallback((layerId, clipId, updates) => {
-    setAudioLayers((prev) => prev.map((layer) => {
-      if (layer.id !== layerId) return layer;
-      return {
-        ...layer,
-        clips: layer.clips.map((c) => c.id === clipId ? { ...c, ...updates } : c),
-      };
-    }));
-  }, []);
-
-  const moveAudioLayer = useCallback((id, delta) => {
-    setAudioLayers((prev) => {
-      const idx = prev.findIndex((l) => l.id === id);
-      if (idx === -1) return prev;
-      const newIdx = Math.max(0, Math.min(prev.length - 1, idx + delta));
-      if (newIdx === idx) return prev;
-      const next = [...prev];
-      const [removed] = next.splice(idx, 1);
-      next.splice(newIdx, 0, removed);
-      return next;
-    });
+    setBgOpen((o) => (o === id ? null : o));
   }, []);
 
   // --- Sound effects (FX lane) ----------------------------------------------
@@ -410,6 +360,18 @@ export default function Home() {
     () => sfx.map((s) => ({ id: s.id, at: s.at, volume: Math.max(0, Math.min(1, (s.volume == null ? 0.8 : s.volume) * sfxMaster)), url: resolveSfxUrl(s.src) })),
     [sfx, sfxMaster, resolveSfxUrl]
   );
+
+  // BG clips mix exactly like sound effects (start + volume), so exports can reuse
+  // the same render path by folding them into the sfx list.
+  const bgResolved = useMemo(
+    () => bgClips.filter((c) => c.url).map((c) => ({
+      id: `bg_${c.id}`, at: c.start, volume: c.volume, url: c.url,
+      offset: c.offset || 0, duration: c.duration,
+      fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+    })),
+    [bgClips]
+  );
+  const mixedAudio = useMemo(() => [...sfxResolved, ...bgResolved], [sfxResolved, bgResolved]);
 
   // Import images, merged by timestamp: a file whose timestamp matches an
   // existing slot fills/replaces it; otherwise it becomes a new slot.
@@ -763,8 +725,15 @@ export default function Home() {
     let coarse = false;
     try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch (_) {}
     setAudioFile(null); setAudioUrl(null); setAudioDuration(0); setPeaks([]);
-    setAudioLayers([]);
-    setNextAudioLayerId(1); setNextAudioClipId(1);
+    setBgClips((prev) => {
+      prev.forEach((c) => { if (c.url) { try { URL.revokeObjectURL(c.url); } catch (_) {} } });
+      return [];
+    });
+    setSelectedBg((prev) => {
+      if (prev && prev.url) { try { URL.revokeObjectURL(prev.url); } catch (_) {} }
+      return null;
+    });
+    setBgOpen(null); bgIdRef.current = 1;
     setSfx([]); setSfxUploads([]); setSelectedSound(null); setSfxOpen(null); setSfxMaster(1);
     setOverlayFile(null); setOverlayUrl(null); setOverlayDuration(0);
     setOverlayOpacity(0.3); setOverlayBlendMode("overlay"); setOverlayLoop(true); setOverlayEnabled(false);
@@ -818,12 +787,10 @@ export default function Home() {
       isVideo: !!(s.img && s.img.isVideo),
     })),
     audioName: audioFile ? audioFile.name : null,
-    audioLayers: audioLayers.map((l) => ({
-      id: l.id, name: l.name, volume: l.volume, muted: l.muted, solo: l.solo,
-      clips: l.clips.map((c) => ({
-        id: c.id, name: c.name, start: c.start, duration: c.duration,
-        volume: c.volume,
-      })),
+    bgClips: bgClips.map((c) => ({
+      id: c.id, name: c.name, start: c.start, duration: c.duration, volume: c.volume,
+      offset: c.offset || 0, sourceDuration: c.sourceDuration || c.duration,
+      fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
     })),
     sfx: sfx.map((s) => ({ id: s.id, name: s.name, src: s.src, at: s.at, volume: s.volume })),
     sfxUploads: sfxUploads.map((u) => ({ mediaId: u.mediaId, label: u.label })),
@@ -833,7 +800,7 @@ export default function Home() {
   }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd,
       motionByName, fxByName, trimByName, volumeByName, fitByName,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      transitionsByName, slots, audioFile, audioLayers, sfx, sfxUploads, sfxMaster, built]);
+      transitionsByName, slots, audioFile, bgClips, sfx, sfxUploads, sfxMaster, built]);
 
   const saveCurrent = useCallback(async () => {
     const proj = currentProject;
@@ -848,14 +815,12 @@ export default function Home() {
       const wanted = new Map();
       if (audioFile) wanted.set("audio", audioFile);
       for (const s of slots) if (!s.empty && s.file) wanted.set(s.id, s.file);
-      for (const l of audioLayers) {
-        for (const c of l.clips) if (c.file) wanted.set(c.id, c.file);
-      }
+      for (const c of bgClips) if (c.file) wanted.set(c.id, c.file);
       for (const u of sfxUploads) if (u._file) wanted.set(u.mediaId, u._file);
       await syncMedia(proj.id, wanted);
       try { setStorage(await storageEstimate()); } catch (_) {}
     } catch (_) { /* storage full or unavailable — keep editing */ }
-  }, [currentProject, loadingProject, makeThumb, exportDuration, clips.length, buildProjectData, audioFile, slots, audioLayers, sfxUploads]);
+  }, [currentProject, loadingProject, makeThumb, exportDuration, clips.length, buildProjectData, audioFile, slots, bgClips, sfxUploads]);
   saveRef.current = saveCurrent;
 
   // Debounced autosave whenever the composition changes.
@@ -866,7 +831,7 @@ export default function Home() {
   }, [view, currentProject, loadingProject, slots, transitionsByName, aspect, fps, renderQuality, transitionDuration,
       fadeIn, fadeOut, motionByName, motionAmount, trimByName, volumeByName, fitByName, trimEnd,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      audioFile, audioLayers, sfx, sfxUploads, sfxMaster, built]);
+      audioFile, bgClips, sfx, sfxUploads, sfxMaster, built]);
 
   const openProject = useCallback(async (id) => {
     const rec = await getProject(id);
@@ -902,48 +867,28 @@ export default function Home() {
       if (audio) {
         setAudioFile(audio.file); setAudioUrl(URL.createObjectURL(audio.file));
         setAudioDuration(audio.dur);
-        getWaveformPeaks(audio.file).then(setPeaks).catch(() => {});
+        getWaveformPeaks(audio.file, 1000).then(setPeaks).catch(() => {});
       }
-      // Load audio layers with clips
-      if (d.audioLayers && d.audioLayers.length) {
-        const layerPromises = d.audioLayers.map(async (al) => {
-          const clipsLoaded = [];
-          if (al.clips && al.clips.length) {
-            for (const clip of al.clips) {
-              const blob = await getMedia(id, clip.id);
-              if (!blob) continue;
-              const file = new File([blob], clip.name, { type: blob.type || "audio/mpeg" });
-              let dur = 0; try { dur = await getAudioDuration(file); } catch (_) {}
-              const peaks = await getWaveformPeaks(file).catch(() => []);
-              clipsLoaded.push({
-                id: clip.id,
-                file,
-                url: URL.createObjectURL(file),
-                name: clip.name,
-                start: clip.start ?? 0,
-                duration: dur,
-                peaks,
-                volume: clip.volume ?? 1,
-              });
-            }
-          }
-          return {
-            id: al.id,
-            name: al.name,
-            volume: al.volume ?? 0.5,
-            muted: al.muted ?? false,
-            solo: al.solo ?? false,
-            clips: clipsLoaded,
-          };
-        });
-        const layers = (await Promise.all(layerPromises)).filter((l) => l && l.clips.length > 0);
-        if (layers.length) {
-          setAudioLayers(layers);
-          setNextAudioLayerId(Math.max(...layers.map((l) => parseInt(l.id.replace("al", "")))) + 1);
-          const maxClipId = Math.max(...layers.flatMap((l) => l.clips.map((c) => parseInt(c.id.replace("ac", "")))), 0);
-          setNextAudioClipId(maxClipId + 1);
-        }
-      }
+      // Background-music clips (migrate any legacy audio layers by flattening their clips).
+      const bgMeta = d.bgClips || (d.audioLayers || []).flatMap((al) => al.clips || []);
+      const bgLoaded = (await Promise.all(bgMeta.map(async (c) => {
+        const blob = await getMedia(id, c.id);
+        if (!blob) return null;
+        const file = new File([blob], c.name || `${c.id}.mp3`, { type: blob.type || "audio/mpeg" });
+        const url = URL.createObjectURL(file);
+        let dur = c.sourceDuration || 0; if (!dur) { try { dur = await getAudioDuration(file); } catch (_) {} }
+        const peaks = await getWaveformPeaks(file, 1000).catch(() => []);
+        return {
+          id: c.id, name: c.name || "audio", file, url, start: c.start ?? 0,
+          sourceDuration: dur, offset: c.offset || 0,
+          duration: c.duration || dur, fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+          peaks, volume: c.volume ?? 0.8,
+        };
+      }))).filter(Boolean);
+      setBgClips(bgLoaded);
+      bgIdRef.current = bgLoaded.reduce((m, c) => Math.max(m, parseInt(String(c.id).replace(/\D/g, ""), 10) || 0), 0) + 1;
+      setSelectedBg(null);
+      setBgOpen(null);
       // Uploaded sound effects, then the placed markers that reference them.
       const sfxUps = (await Promise.all((d.sfxUploads || []).map(async (u) => {
         const blob = await getMedia(id, u.mediaId);
@@ -1062,7 +1007,7 @@ export default function Home() {
         width: renderDims.width, height: renderDims.height, fps,
         transitions, transitionDuration, motions, motionAmount, fx, fxAmount, trims, volumes, speeds, fadeIn, fadeOut,
         captions, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-        audioLayers, sfx: sfxResolved,
+        sfx: mixedAudio,
         overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
         watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         textOverlays,
@@ -1076,7 +1021,7 @@ export default function Home() {
     }
   }, [clips, exportDuration, imagesByName, videosByName, audioFile, renderDims, fps, transitionsByName, transitionDuration,
       motionByName, motionAmount, fxByName, fxAmount, trimByName, volumeByName, fitByName, videoInfoByName, fadeIn, fadeOut,
-      captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, audioLayers, sfxResolved,
+      captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, mixedAudio,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled]);
 
@@ -1170,7 +1115,7 @@ export default function Home() {
           videosByName, trims, speeds, volumes,
           cues: captionsOn && captionCues.length ? captionCues : null,
           captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-          audioLayers, sfx: sfxResolved,
+          sfx: mixedAudio,
           overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
           watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         },
@@ -1247,7 +1192,7 @@ export default function Home() {
   }, [clips, exportDuration, transitionsByName, motionByName, fxByName, imagesByName, renderDims, fps, transitionDuration, motionAmount, fxAmount, audioFile,
       videosByName, videoInfoByName, fitByName, trimByName, volumeByName, currentProject, flashDone, wcProfile,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      audioLayers, sfxResolved,
+      mixedAudio,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled]);
 
@@ -1469,12 +1414,10 @@ export default function Home() {
           captionName={captionName} captionError={captionError} onCaptionFile={onCaptionFile}
           syncOn={syncOn} setSyncOn={setSyncOn}
           syncStatus={syncStatus} syncAligned={syncAligned}
-          audioLayers={audioLayers} setAudioLayers={setAudioLayers}
-          updateAudioLayer={updateAudioLayer} removeAudioLayer={removeAudioLayer}
-          moveAudioLayer={moveAudioLayer}
-          addAudioLayer={addAudioLayer}
-          addAudioClipToLayer={addAudioClipToLayer} removeAudioClip={removeAudioClip}
-          updateAudioClip={updateAudioClip}
+          bgClips={bgClips} selectedBg={selectedBg} uploadBg={uploadBg}
+          addBgClip={addBgClip} moveBgClip={moveBgClip} setBgVolume={setBgVolume}
+          updateBgClip={updateBgClip}
+          removeBgClip={removeBgClip} bgOpen={bgOpen} setBgOpen={setBgOpen}
           sfx={sfx} addSfx={addSfx} moveSfx={moveSfx} setSfxVolume={setSfxVolume}
           removeSfx={removeSfx} uploadSfx={uploadSfx} removeSfxUpload={removeSfxUpload}
           selectedSound={selectedSound} setSelectedSound={setSelectedSound}

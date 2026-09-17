@@ -138,6 +138,29 @@ describe("sound effects (FX lane)", () => {
     expect(fc).toContain("amix=inputs=2"); // voiceover + the effect
   });
 
+  it("trims a BG clip to its in-point and play length", () => {
+    const bg = [{ id: "bg_bg1", path: "music.mp3", at: 1.5, volume: 0.8, offset: 4, duration: 3 }];
+    const p = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"] },
+      { ...io, sfxClips: bg }
+    );
+    const fc = filterText(p);
+    expect(fc).toContain("atrim=start=4.000:duration=3.000");
+    expect(fc).toContain("asetpts=PTS-STARTPTS");
+    expect(fc).toContain("adelay=1500|1500[sfx0]");
+  });
+
+  it("fades a BG clip in and out", () => {
+    const bg = [{ id: "bg_bg1", path: "music.mp3", at: 0, volume: 0.8, offset: 0, duration: 6, fadeIn: 1, fadeOut: 2 }];
+    const p = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"] },
+      { ...io, sfxClips: bg }
+    );
+    const fc = filterText(p);
+    expect(fc).toContain("afade=t=in:st=0:d=1.000");
+    expect(fc).toContain("afade=t=out:st=4.000:d=2.000");
+  });
+
   it("adds effects to the single audio mix of a segmented render", () => {
     const N = 130, D = 2, TD = 0.4;
     const many = Array.from({ length: N }, (_, k) => ({ name: "c" + k, start: +(k * (D - TD)).toFixed(3), duration: D, gap: false }));

@@ -15,6 +15,17 @@ function stem(name) {
   return i > 0 ? name.slice(0, i) : name;
 }
 
+// Slice a full-file waveform down to the trimmed region [offset, offset+duration].
+function slicePeaks(peaks, sourceDuration, offset, duration) {
+  if (!peaks || !peaks.length) return peaks;
+  const src = sourceDuration || duration;
+  if (!src) return peaks;
+  const n = peaks.length;
+  const a = Math.max(0, Math.min(n - 1, Math.floor((offset / src) * n)));
+  const b = Math.min(n, Math.ceil(((offset + duration) / src) * n));
+  return peaks.slice(a, Math.max(a + 1, b));
+}
+
 function Waveform({ peaks, style }) {
   if (!peaks || !peaks.length) return <div className="wave wave--empty" style={style} />;
   const n = peaks.length;
@@ -28,52 +39,23 @@ function Waveform({ peaks, style }) {
   );
 }
 
-// Combine peaks from multiple clips into a single waveform for the layer background
-function combinePeaks(clips, duration) {
-  if (!clips || !clips.length) return [];
-  const buckets = 480;
-  const combined = new Array(buckets).fill(0);
-  const bucketDuration = duration / buckets;
-  
-  for (const clip of clips) {
-    if (!clip.peaks || !clip.peaks.length) continue;
-    const clipStartBucket = Math.floor(clip.start / bucketDuration);
-    const clipBucketDuration = clip.duration / clip.peaks.length;
-    
-    for (let i = 0; i < clip.peaks.length; i++) {
-      const time = clip.start + i * clipBucketDuration;
-      const bucket = Math.floor(time / bucketDuration);
-      if (bucket >= 0 && bucket < buckets) {
-        combined[bucket] = Math.max(combined[bucket], clip.peaks[i] * clip.volume);
-      }
-    }
-  }
-  return combined;
-}
-
 // The signature element: a scrubbable track with a fixed label gutter. Clips,
- // waveform, playhead and click-to-seek all share the track's coordinate space.
- export default function Timeline({
-   clips, imageEls, duration, time, peaks, activeName, badClips,
-   transitionsByName, motionByName, selectedName, onSelect,
-   onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onResizeBoundary,
-   trimEnd, onTrimChange,
-audioLayers,
-    updateAudioClip,
-    zoom = 1,
-    scrollRef,
-    onAddAudioClip,
-    sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
-  }) {
-   const trackRef = useRef(null);
-   const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
-
-const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, clipId }
-  const [selectedAudioLayer, setSelectedAudioLayer] = useState(null); // layerId
-  const [addHover, setAddHover] = useState(null); // { layerId, t } while hovering an audio lane
+// waveform, playhead and click-to-seek all share the track's coordinate space.
+export default function Timeline({
+  clips, imageEls, duration, time, peaks, activeName, badClips,
+  transitionsByName, motionByName, selectedName, onSelect,
+  onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onResizeBoundary,
+  trimEnd, onTrimChange,
+  zoom = 1,
+  scrollRef,
+  bgClips = [], onBgAdd, onBgMove, onBgTrim, onBgOpen,
+  sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
+}) {
+  const trackRef = useRef(null);
+  const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
 
   // Convert a pointer x over the track into a timeline time (used by the
-  // hover "+" drop so the uploaded sound effect lands where the pointer is).
+  // hover "+" drop so an uploaded clip lands where the pointer is).
   const laneXToTime = useCallback((clientX) => {
     const el = trackRef.current;
     if (!el || !duration) return 0;
@@ -107,6 +89,70 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
     window.addEventListener("pointerup", up);
   }, [laneXToTime, onSfxMove, onSfxOpen]);
 
+  // Click empty BG-lane space to drop the pending audio clip at the pointer.
+  const onBgLaneDown = useCallback((e) => {
+    if (e.target !== e.currentTarget || !onBgAdd) return;
+    onBgAdd(+laneXToTime(e.clientX).toFixed(3));
+  }, [onBgAdd, laneXToTime]);
+
+  // A BG clip opens its volume popover on a clean tap; dragging it (>4px) moves it
+  // along the lane instead (keeping the pointer's grip offset, so it doesn't jump).
+  const onBgClipDown = useCallback((e, id) => {
+    e.stopPropagation();
+    const clip = bgClips.find((c) => c.id === id);
+    if (!clip) return;
+    const offset = laneXToTime(e.clientX) - clip.start;
+    const origin = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const move = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) > 4) moved = true;
+      if (moved && onBgMove) onBgMove(id, +Math.max(0, laneXToTime(ev.clientX) - offset).toFixed(3));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!moved && onBgOpen) onBgOpen(id);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [bgClips, laneXToTime, onBgMove, onBgOpen]);
+
+  // Drag a BG clip's edge handle to trim it: the left handle moves the clip's
+  // in-point (shifting `offset` into the source), the right handle changes length.
+  const MIN_BG = 0.3; // never let a BG clip collapse below this many seconds
+  const onBgTrimDown = useCallback((e, id, edge) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const c = bgClips.find((x) => x.id === id);
+    if (!c || !onBgTrim) return;
+    const startX = e.clientX;
+    const cStart = c.start, cOffset = c.offset || 0, cDur = c.duration;
+    const cSrc = c.sourceDuration || c.duration;
+    const move = (ev) => {
+      const el = trackRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const dSecs = ((ev.clientX - startX) / r.width) * duration;
+      if (edge === "left") {
+        const lo = Math.max(0, cStart - cOffset);      // can't skip before the file's start
+        const hi = cStart + cDur - MIN_BG;
+        const newStart = Math.min(Math.max(cStart + dSecs, lo), hi);
+        const delta = newStart - cStart;
+        onBgTrim(id, { start: +newStart.toFixed(3), offset: +(cOffset + delta).toFixed(3), duration: +(cDur - delta).toFixed(3) });
+      } else {
+        const maxDur = cSrc - cOffset;
+        const newDur = Math.min(Math.max(cDur + dSecs, MIN_BG), maxDur);
+        onBgTrim(id, { duration: +newDur.toFixed(3) });
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [bgClips, duration, onBgTrim]);
+
   // Scrub the playhead. Reference the track's box for x/width; the ruler and
   // audio lane are horizontally aligned with it, so this works for all three.
   const seekAt = useCallback((clientX) => {
@@ -133,51 +179,6 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
 
   const MIN_TRIM = 1;      // never allow a zero-length export
   const SNAP_PX = 8;       // snap to a clip boundary within this many pixels
-
-  // Audio clip trim drag handlers
-  const onAudioClipTrimLeftDown = useCallback((e, layerId, clipId) => {
-    e.stopPropagation();
-    if (onScrubStart) onScrubStart();
-    const trackEl = trackRef.current;
-    if (!trackEl || !duration || !updateAudioClip) return;
-    const layer = audioLayers.find((l) => l.id === layerId);
-    const clip = layer?.clips.find((c) => c.id === clipId);
-    if (!clip) return;
-    const startX = e.clientX;
-    const clipStart = clip.start;
-    const clipDur = clip.duration;
-    const move = (ev) => {
-      const r = trackEl.getBoundingClientRect();
-      const dx = ev.clientX - startX;
-      const dSecs = (dx / r.width) * duration;
-      const newStart = Math.max(0, Math.min(clipStart + clipDur - 0.1, clipStart + dSecs));
-      const newDur = clipDur - (newStart - clipStart);
-      updateAudioClip(layerId, clipId, { start: newStart, duration: newDur });
-    };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (onScrubEnd) onScrubEnd(); };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-  }, [duration, audioLayers, updateAudioClip, onScrubStart, onScrubEnd]);
-
-  const onAudioClipTrimRightDown = useCallback((e, layerId, clipId) => {
-    e.stopPropagation();
-    if (onScrubStart) onScrubStart();
-    const trackEl = trackRef.current;
-    if (!trackEl || !duration || !updateAudioClip) return;
-    const layer = audioLayers.find((l) => l.id === layerId);
-    const clip = layer?.clips.find((c) => c.id === clipId);
-    if (!clip) return;
-    const startX = e.clientX;
-    const clipDur = clip.duration;
-    const move = (ev) => {
-      const r = trackEl.getBoundingClientRect();
-      const dx = ev.clientX - startX;
-      const dSecs = (dx / r.width) * duration;
-      const newDur = Math.max(0.1, clipDur + dSecs);
-      updateAudioClip(layerId, clipId, { duration: newDur });
-    };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (onScrubEnd) onScrubEnd(); };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-  }, [duration, audioLayers, updateAudioClip, onScrubStart, onScrubEnd]);
 
   const trimAt = useCallback((clientX) => {
     const el = trackRef.current;
@@ -251,70 +252,6 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
     window.addEventListener("pointerup", up);
   }, [boundaryAt, clips, onResizeBoundary]);
 
-  // Audio clip drag handler
-  const onAudioClipDragDown = useCallback((e, layerId, clipId) => {
-    e.stopPropagation();
-    if (onScrubStart) onScrubStart();
-    const trackEl = trackRef.current;
-    if (!trackEl || !duration || !updateAudioClip) return;
-    
-    const layer = audioLayers.find((l) => l.id === layerId);
-    const clip = layer?.clips.find((c) => c.id === clipId);
-    if (!clip) return;
-    
-    const startX = e.clientX;
-    const clipStart = clip.start;
-    
-    const move = (ev) => {
-      const r = trackEl.getBoundingClientRect();
-      const dx = ev.clientX - startX;
-      const dSecs = (dx / r.width) * duration;
-      const newStart = Math.max(0, Math.min(duration - clip.duration, clipStart + dSecs));
-      updateAudioClip(layerId, clipId, { start: newStart });
-    };
-    
-    const up = (ev) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      if (onScrubEnd) onScrubEnd();
-    };
-    
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }, [duration, audioLayers, updateAudioClip, onScrubStart, onScrubEnd]);
-
-  // Audio clip resize handler (right edge)
-  const onAudioClipResizeDown = useCallback((e, layerId, clipId) => {
-    e.stopPropagation();
-    if (onScrubStart) onScrubStart();
-    const trackEl = trackRef.current;
-    if (!trackEl || !duration || !updateAudioClip) return;
-    
-    const layer = audioLayers.find((l) => l.id === layerId);
-    const clip = layer?.clips.find((c) => c.id === clipId);
-    if (!clip) return;
-    
-    const startX = e.clientX;
-    const clipDuration = clip.duration;
-    
-    const move = (ev) => {
-      const r = trackEl.getBoundingClientRect();
-      const dx = ev.clientX - startX;
-      const dSecs = (dx / r.width) * duration;
-      const newDuration = Math.max(0.1, clipDuration + dSecs);
-      updateAudioClip(layerId, clipId, { duration: newDuration });
-    };
-    
-    const up = (ev) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      if (onScrubEnd) onScrubEnd();
-    };
-    
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }, [duration, audioLayers, updateAudioClip, onScrubStart, onScrubEnd]);
-
   // A clip opens the inspector only on a clean tap, not a drag/scroll.
   const onClipClick = useCallback((name, e) => {
     const d = downRef.current;
@@ -383,8 +320,9 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
       <div className="tl__row">
         <div className="tl__gutter">
           <span className="tl__tag">V</span>
-          <span className="tl__tag tl__tag--audio">A</span>
+          <span className="tl__tag tl__tag--audio">VO</span>
           <span className="tl__tag tl__tag--fx">FX</span>
+          <span className="tl__tag tl__tag--bg">BG</span>
         </div>
 
         <div className="tl__track" ref={trackRef}>
@@ -459,101 +397,6 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
               <span className="tl__audio-label">Voiceover</span>
             </div>
           </div>
-          {audioLayers && audioLayers.length > 0 && audioLayers.map((layer, layerIdx) => (
-            <div
-              key={layer.id}
-              className="tl__lane tl__lane--audio tl__lane--layer"
-              style={{ opacity: layer.muted ? 0.5 : 1 }}
-              onPointerMove={(e) => {
-                const t = laneXToTime(e.clientX);
-                setAddHover((prev) => (prev && prev.layerId === layer.id && Math.abs(prev.t - t) < 0.03) ? prev : { layerId: layer.id, t });
-              }}
-              onPointerLeave={() => setAddHover((prev) => (prev && prev.layerId === layer.id ? null : prev))}
-            >
-              <div className="tl__audio-layer">
-                {/* Layer background waveform */}
-                <Waveform peaks={layer.clips && layer.clips.length > 0 ? combinePeaks(layer.clips, duration) : []} />
-                <span className="tl__audio-label">
-                  {layer.name} {layer.solo && <span className="tl__solo-badge">S</span>}
-                  <span className="tl__volume-indicator">{Math.round(layer.volume * 100)}%</span>
-                </span>
-                {/* Individual clips on this layer */}
-                {layer.clips && layer.clips.map((clip) => {
-                  const isSelected = selectedAudioClip?.layerId === layer.id && selectedAudioClip?.clipId === clip.id;
-                  return (
-                    <div
-                      key={clip.id}
-                      className={`audio-clip ${isSelected ? 'selected' : ''}`}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        bottom: 0,
-                        left: pctZoom(clip.start),
-                        width: pctZoom(clip.duration),
-                        opacity: clip.volume,
-                        border: isSelected ? '2px solid var(--accent)' : 'none',
-                        boxSizing: 'border-box',
-                      }}
-                      title={`${clip.name} · ${clip.start.toFixed(1)}s · ${clip.duration.toFixed(1)}s — click for volume, drag to move`}
-                      onClick={(e) => { e.stopPropagation(); setSelectedAudioClip({ layerId: layer.id, clipId: clip.id }); setSelectedAudioLayer(layer.id); }}
-                      onPointerDown={(e) => { e.stopPropagation(); onAudioClipDragDown(e, layer.id, clip.id); }}
-                    >
-                      <Waveform peaks={clip.peaks} style={{ width: '100%', height: '100%' }} />
-                      {/* Trim handle - left edge */}
-                      <span className="audio-clip-trim-handle audio-trim-left" onPointerDown={(e) => { e.stopPropagation(); onAudioClipTrimLeftDown(e, layer.id, clip.id); }} />
-                      {/* Trim handle - right edge */}
-                      <span className="audio-clip-trim-handle audio-trim-right" onPointerDown={(e) => { e.stopPropagation(); onAudioClipTrimRightDown(e, layer.id, clip.id); }} />
-                    </div>
-                  );
-                })}
-                {/* Volume popover for the clicked clip */}
-                {selectedAudioClip?.layerId === layer.id && (() => {
-                  const sel = layer.clips.find((c) => c.id === selectedAudioClip.clipId);
-                  if (!sel) return null;
-                  return (
-                    <div className="audio-vol-pop" style={{ left: pctZoom(sel.start) }} title={`Vol ${Math.round(sel.volume * 100)}%`}>
-                      <span className="audio-vol-pop__tag">Vol</span>
-                      <input
-                        type="range" min={0} max={1} step={0.05}
-                        value={sel.volume}
-                        onChange={(e) => updateAudioClip && updateAudioClip(layer.id, sel.id, { volume: +e.target.value })}
-                      />
-                      <span className="audio-vol-pop__val">{Math.round(sel.volume * 100)}%</span>
-                    </div>
-                  );
-                })()}
-              </div>
-              {/* Hover circle-plus: upload a sound effect at the pointer position */}
-              {addHover && addHover.layerId === layer.id && (
-                <button
-                  type="button"
-                  className="tl__add-sfx"
-                  style={{ left: pctZoom(addHover.t) }}
-                  title="Upload a sound effect here"
-                  aria-label="Upload a sound effect here"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerMove={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const inp = document.querySelector(`input[data-addlayer="${layer.id}"]`);
-                    if (inp) { inp.dataset.start = String(addHover.t || 0); inp.click(); }
-                  }}
-                >
-                  <span className="tl__add-sfx__icon">+</span>
-                </button>
-              )}
-              <input
-                type="file" accept="audio/*" hidden
-                data-addlayer={layer.id}
-                onChange={(e) => {
-                  const t = parseFloat(e.target.dataset.start || "0");
-                  if (onAddAudioClip && e.target.files && e.target.files.length) onAddAudioClip(layer.id, e.target.files, t);
-                  setAddHover((prev) => (prev && prev.layerId === layer.id ? null : prev));
-                  e.target.value = "";
-                }}
-              />
-            </div>
-          ))}
 
           <div
             className="tl__lane tl__lane--fx"
@@ -572,6 +415,38 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
                 <span className="sfxmark__line" />
                 <span className="sfxmark__label">{s.name}</span>
               </button>
+            ))}
+          </div>
+
+          <div
+            className="tl__lane tl__lane--bg"
+            onPointerDown={onBgLaneDown}
+            title="Add an audio layer, then click here to place it · drag a clip to move · click a clip to set volume"
+          >
+            {bgClips.map((c) => (
+              <div
+                key={c.id}
+                className="bgclip"
+                style={{ left: pctZoom(c.start), width: pctZoom(c.duration) }}
+                title={`${c.name} · ${label(c.start)} · ${c.duration.toFixed(1)}s — click for volume, drag to move`}
+                onPointerDown={(e) => onBgClipDown(e, c.id)}
+              >
+                <Waveform
+                  peaks={slicePeaks(c.peaks, c.sourceDuration, c.offset || 0, c.duration)}
+                  style={{ width: "100%", height: "100%" }}
+                />
+                <span className="bgclip__label">{stem(c.name)}</span>
+                <span
+                  className="bgclip__handle bgclip__handle--l"
+                  title="Drag to trim the start"
+                  onPointerDown={(e) => onBgTrimDown(e, c.id, "left")}
+                />
+                <span
+                  className="bgclip__handle bgclip__handle--r"
+                  title="Drag to trim the end"
+                  onPointerDown={(e) => onBgTrimDown(e, c.id, "right")}
+                />
+              </div>
             ))}
           </div>
 
