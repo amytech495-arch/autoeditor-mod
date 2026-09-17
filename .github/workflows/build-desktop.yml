@@ -1,9 +1,9 @@
 name: Build desktop distributables (Windows + macOS)
 
 # Produces the desktop zips you can't build on a single machine:
-#   - AutoEditor.zip       (Windows, SEA exe)    — built on Windows
-#   - AutoEditor-mac-arm64.zip (Apple Silicon)   — built on macOS arm64
-# The mac-x64 build is produced locally on an Intel Mac.
+#   - AutoEditorModv1.3-Windows.zip          — built on Windows
+#   - AutoEditorModv1.3-macOS-arm64.zip      — built on macOS arm64
+# The AutoEditorModv1.3-macOS-x64.zip build is produced locally on an Intel Mac.
 # Run manually from the repo's Actions tab, or on a version tag (v*).
 on:
   workflow_dispatch:

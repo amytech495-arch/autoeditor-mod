@@ -6,7 +6,7 @@
 //
 //   node build-dist-termux.mjs
 //
-// Produces:  dist/AutoEditor-android.zip
+// Produces:  dist/AutoEditorModv1.3-Android.zip
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, copyFileSync, cpSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -14,9 +14,10 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const VERSION = "1.3";
 const DIST = path.join(ROOT, "dist");
 const STAGE = path.join(os.tmpdir(), "autoeditor-build-termux");
-const OUT = path.join(STAGE, "AutoEditor-android");
+const OUT = path.join(STAGE, `AutoEditorModv${VERSION}-Android`);
 
 function run(cmd, cwd = ROOT) { console.log("> " + cmd); execSync(cmd, { cwd, stdio: "inherit" }); }
 
@@ -117,7 +118,7 @@ SETUP
 2. Open Termux and give it file access (once):
      termux-setup-storage
 3. Go to this folder (e.g. if it's in Downloads):
-     cd ~/storage/downloads/AutoEditor-android
+     cd ~/storage/downloads/AutoEditorModv1.3-Android
 4. Run:
      bash start.sh
 
@@ -155,7 +156,7 @@ async function main() {
 
   console.log("[5/5] Zipping...");
   mkdirSync(DIST, { recursive: true }); // keep dist/ — only overwrite our own zip
-  const zip = path.join(DIST, "AutoEditor-android.zip");
+  const zip = path.join(DIST, `AutoEditorModv${VERSION}-Android.zip`);
   rmSync(zip, { force: true });
   execSync(
     `powershell -NoProfile -Command "Compress-Archive -Path '${OUT}' -DestinationPath '${zip}' -CompressionLevel Optimal -Force"`,

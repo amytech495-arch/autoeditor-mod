@@ -5,7 +5,7 @@
 //
 //   node build-dist-mac.mjs
 //
-// Produces:  dist/AutoEditor-mac-<arch>.zip
+// Produces:  dist/AutoEditorModv1.3-macOS-<arch>.zip
 // The single executable embeds the server; ffmpeg, the caption font and the UI
 // ship alongside it and are self-located at runtime. It ad-hoc code-signs the
 // binaries so macOS will run them (no Apple Developer ID = users right-click →
@@ -22,6 +22,7 @@ if (process.platform !== "darwin") {
 }
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const VERSION = "1.3";
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 const ARCH = process.arch; // "arm64" or "x64"
 const DIST = path.join(ROOT, "dist");
@@ -96,7 +97,7 @@ Everything runs on your Mac — nothing is uploaded.
 
   console.log("[7/7] Zipping...");
   mkdirSync(DIST, { recursive: true }); // keep dist/ — only overwrite our own zip
-  const zip = path.join(DIST, `AutoEditor-mac-${ARCH}.zip`);
+  const zip = path.join(DIST, `AutoEditorModv${VERSION}-macOS-${ARCH}.zip`);
   rmSync(zip, { force: true }); // ditto won't overwrite an existing archive
   // ditto preserves the executable bits and code signatures inside the zip.
   run(`ditto -c -k --sequesterRsrc --keepParent "${OUT}" "${zip}"`);
