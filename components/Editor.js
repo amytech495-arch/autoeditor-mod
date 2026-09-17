@@ -12,6 +12,7 @@ import {
   captionCueAt, drawCaption, captionFontPx, captionLineHeightDefault, drawWatermark,
 } from "../lib/captions";
 import { drawTextOverlays } from "../lib/textOverlay";
+import { SFX_LIB, previewSfx, stopSfxPreviews } from "../lib/sfx";
 
 
 function tc(t) {
@@ -52,6 +53,9 @@ export default function Editor({
   syncOn, setSyncOn, syncStatus, syncAligned,
   audioLayers, setAudioLayers, updateAudioLayer, removeAudioLayer, moveAudioLayer, addAudioLayer,
   addAudioClipToLayer, removeAudioClip, updateAudioClip,
+  sfx = [], addSfx, moveSfx, setSfxVolume, removeSfx, uploadSfx, removeSfxUpload,
+  selectedSound, setSelectedSound, sfxUploads = [], sfxOpen, setSfxOpen,
+  sfxMaster = 1, setSfxMaster,
   overlayUrl, overlayDuration,
   setOverlayFile, setOverlayUrl, setOverlayDuration,
   overlayOpacity, setOverlayOpacity,
@@ -81,6 +85,10 @@ export default function Editor({
   const capInputRef = useRef(null);
   const replaceInputRef = useRef(null);
   const audioLayerInputRef = useRef(null);
+  const sfxInputRef = useRef(null);
+  const sfxAudioRefs = useRef(new Map()); // marker id -> <audio> element (preview playback)
+  const sfxPrevRef = useRef(0);           // playhead time at the previous RAF frame, for crossing detection
+  const sfxResolvedRef = useRef([]);      // latest resolved markers (read by the RAF loop)
   const overlayInputRef = useRef(null);
   const pending = useRef(null); // gap-fill target name
   const trimEndRef = useRef(exportDuration);
@@ -100,6 +108,45 @@ export default function Editor({
   const [warn4k, setWarn4k] = useState(false); // transient "4K is heavy" toast on quality select
   const warnTimer = useRef(null);
   useEffect(() => () => clearTimeout(warnTimer.current), []);
+  // Sound-effect previews are one-shots — silence any still playing on unmount.
+  useEffect(() => () => stopSfxPreviews(), []);
+
+  // Resolve each placed marker's source to a playable URL (library preset or upload).
+  const sfxUrlFor = useCallback((src) => {
+    if (!src) return null;
+    if (src.kind === "lib") return src.file;
+    const up = sfxUploads.find((u) => u.mediaId === src.mediaId);
+    return up ? up.url : null;
+  }, [sfxUploads]);
+  const sfxResolved = useMemo(
+    () => sfx.map((s) => ({ id: s.id, at: s.at, volume: s.volume, url: sfxUrlFor(s.src) })),
+    [sfx, sfxUrlFor]
+  );
+  useEffect(() => { sfxResolvedRef.current = sfxResolved; }, [sfxResolved]);
+
+  // One <audio> element per placed marker, reused across frames. Created lazily and
+  // volume-scaled by the lane's master gain; removed when its marker disappears.
+  useEffect(() => {
+    const refs = sfxAudioRefs.current;
+    const live = new Set(sfxResolved.map((s) => s.id));
+    for (const [id, el] of [...refs]) {
+      if (!live.has(id)) { try { el.pause(); el.src = ""; } catch (_) {} refs.delete(id); }
+    }
+    for (const s of sfxResolved) {
+      let el = refs.get(s.id);
+      if (el && el.dataset.url !== (s.url || "")) {
+        try { el.pause(); el.src = ""; } catch (_) {}
+        refs.delete(s.id); el = null;
+      }
+      if (!el && s.url) {
+        el = new Audio(s.url);
+        el.preload = "auto";
+        el.dataset.url = s.url;
+        refs.set(s.id, el);
+      }
+      if (el) el.volume = Math.max(0, Math.min(1, (s.volume == null ? 0.8 : s.volume) * sfxMaster));
+    }
+  }, [sfxResolved, sfxMaster]);
   const [inspect, setInspect] = useState(null);   // slot name open in the inspector
   const [dismissedWarn, setDismissedWarn] = useState(() => new Set()); // hidden warning texts
   const [timelineZoom, setTimelineZoom] = useState(1); // 0.5 to 4
@@ -436,6 +483,16 @@ export default function Editor({
         return;
       }
       setTime(a.currentTime);
+      // FX-lane sound effects: fire each marker once, the frame the playhead crosses it.
+      const mainT = a.currentTime;
+      const prevT = sfxPrevRef.current;
+      sfxPrevRef.current = mainT;
+      for (const s of sfxResolvedRef.current) {
+        if (prevT <= s.at && mainT > s.at) {
+          const el = sfxAudioRefs.current.get(s.id);
+          if (el) { try { el.currentTime = 0; } catch (_) {} el.play().catch(() => {}); }
+        }
+      }
       // Sync audio layer clips to main audio position
       for (const [layerId, clipRefs] of Object.entries(audioLayerRefs.current)) {
         const layer = audioLayers.find((l) => l.id === layerId);
@@ -472,8 +529,19 @@ export default function Editor({
       }
       rafRef.current = requestAnimationFrame(loop);
     };
-    const onPlay = () => { setPlaying(true); cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(loop); };
-    const onStop = () => { setPlaying(false); cancelAnimationFrame(rafRef.current); setTime(a.currentTime); };
+    const onPlay = () => {
+      setPlaying(true);
+      // Start crossing detection from the current position (never retro-fire markers).
+      sfxPrevRef.current = a.currentTime;
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    const onStop = () => {
+      setPlaying(false);
+      cancelAnimationFrame(rafRef.current);
+      setTime(a.currentTime);
+      for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
+    };
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onStop);
     a.addEventListener("ended", onStop);
@@ -587,6 +655,10 @@ export default function Editor({
     if (!a) return;
     const c = Math.min(Math.max(t, 0), duration || t || 0);
     setTime(c);
+    // A seek repositions the playhead: silence in-flight effects and rebase the
+    // crossing detector so nothing fires for markers we skipped over.
+    sfxPrevRef.current = c;
+    for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
     if (a.seeking) pendingSeekRef.current = c;
     else {
       pendingSeekRef.current = null;
@@ -649,9 +721,13 @@ export default function Editor({
         if (!clipEl.paused) { try { clipEl.pause(); } catch (_) {} }
       }
     }
+    // Silence any in-flight sound effects while scrubbing.
+    for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
   }, []);
   const onScrubEnd = useCallback(() => {
     const a = audioRef.current;
+    // Rebase crossing detection at the release position (no retro-fire on resume).
+    if (a) sfxPrevRef.current = a.currentTime;
     if (a && scrubResumeRef.current) { scrubResumeRef.current = false; a.play().catch(() => {}); }
     // Resume audio layer clips
     for (const [layerId, clipRefs] of Object.entries(audioLayerRefs.current)) {
@@ -836,6 +912,10 @@ export default function Editor({
           zoom={timelineZoom}
           scrollRef={timelineScrollRef}
           onAddAudioClip={(layerId, files, start) => addAudioClipToLayer && addAudioClipToLayer(layerId, files, start)}
+          sfx={sfx}
+          onSfxAdd={addSfx}
+          onSfxMove={moveSfx}
+          onSfxOpen={setSfxOpen}
         />
       </div>
 
@@ -1445,9 +1525,83 @@ export default function Editor({
           )}
         </div>
 
+        <div className="panel sound-effects">
+          <h2 className="panel__h">Sound effects</h2>
+          <div className="mini-h">
+            Select a sound, then click the <b>FX</b> track to place it. Drag a marker
+            to move it; click it to set volume or remove.
+          </div>
+          <div className="mini-h" style={{ marginTop: 12 }}>Master volume</div>
+          <label className="trdur" style={{ marginTop: 0 }}>
+            <span>Vol</span>
+            <input
+              type="range" min={0} max={1} step={0.05}
+              value={sfxMaster}
+              onChange={(e) => setSfxMaster && setSfxMaster(+e.target.value)}
+            />
+            <span className="trdur__val">{Math.round(sfxMaster * 100)}%</span>
+          </label>
+          <div className="mini-h" style={{ marginTop: 12 }}>Library</div>
+          <div className="sfxlist">
+            {SFX_LIB.map((s) => {
+              const isOn = !!(selectedSound && selectedSound.url === s.file);
+              return (
+                <div key={s.id} className={`sfxrow${isOn ? " is-on" : ""}`}>
+                  <button
+                    type="button" className="sfxrow__play" title="Preview"
+                    onClick={(e) => { e.stopPropagation(); previewSfx(s.file, 0.9 * sfxMaster); }}
+                  >▶</button>
+                  <button
+                    type="button" className="sfxrow__name"
+                    onClick={() => setSelectedSound && setSelectedSound({ name: s.label, url: s.file, src: { kind: "lib", file: s.file } })}
+                  >{s.label}</button>
+                </div>
+              );
+            })}
+          </div>
+          {sfxUploads.length > 0 && (
+            <>
+              <div className="mini-h" style={{ marginTop: 12 }}>Your uploads</div>
+              <div className="sfxlist">
+                {sfxUploads.map((u) => {
+                  const isOn = !!(selectedSound && selectedSound.url === u.url);
+                  return (
+                    <div key={u.mediaId} className={`sfxrow${isOn ? " is-on" : ""}`}>
+                      <button
+                        type="button" className="sfxrow__play" title="Preview"
+                        onClick={(e) => { e.stopPropagation(); previewSfx(u.url, 0.9 * sfxMaster); }}
+                      >▶</button>
+                      <button
+                        type="button" className="sfxrow__name"
+                        onClick={() => setSelectedSound && setSelectedSound({ name: u.label, url: u.url, src: { kind: "upload", mediaId: u.mediaId } })}
+                      >{u.label}</button>
+                      <button
+                        type="button" className="sfxrow__del" title="Remove upload"
+                        onClick={(e) => { e.stopPropagation(); removeSfxUpload && removeSfxUpload(u.mediaId); }}
+                      >✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          <button
+            type="button" className="trall" style={{ marginTop: 12 }}
+            onClick={() => sfxInputRef.current && sfxInputRef.current.click()}
+          >⤒ Upload .mp3 / .wav</button>
+          <input
+            ref={sfxInputRef} type="file" accept="audio/*,.mp3,.wav" hidden
+            onChange={(e) => {
+              const f = e.target.files && e.target.files[0];
+              e.target.value = "";
+              if (f && uploadSfx) uploadSfx(f);
+            }}
+          />
+        </div>
+
         <div className="panel audio-layers">
           <h2 className="panel__h">Audio Layers</h2>
-          <div className="mini-h">Add background music, sound effects, or additional voice tracks. Drag clips on the timeline to position them.</div>
+          <div className="mini-h">Add background music or additional voice tracks. Drag clips on the timeline to position them.</div>
           <input
             type="file" accept="audio/*" hidden
             ref={audioLayerInputRef}
@@ -1510,19 +1664,6 @@ export default function Editor({
                       >✕</button>
                     </div>
                   </div>
-                  <input
-                    type="file" accept="audio/*" hidden
-                    data-layer={layer.id}
-                    onChange={(e) => addAudioClipToLayer && addAudioClipToLayer(layer.id, e.target.files)}
-                  />
-                  <button
-                    type="button"
-                    className="mbtn"
-                    style={{ fontSize: 11, padding: "2px 8px", marginBottom: 4 }}
-                    onClick={() => document.querySelector(`input[data-layer="${layer.id}"]`)?.click()}
-                  >
-                    + Add Sound Effect
-                  </button>
                   {layer.clips && layer.clips.length > 0 && (
                     <div style={{ marginTop: 4 }}>
                       {layer.clips.map((clip) => (
@@ -2006,6 +2147,40 @@ export default function Editor({
           <span>4K render is heavy (~4× the pixels of 1080p) — expect much longer encodes and higher memory use; iOS/Safari long-render limits still apply</span>
         </div>
       )}
+      {(() => {
+        if (sfxOpen == null) return null;
+        const s = sfx.find((x) => x.id === sfxOpen);
+        if (!s) return null;
+        return (
+          <div className="modal" role="dialog" aria-modal="true" onClick={() => setSfxOpen && setSfxOpen(null)}>
+            <div className="modal__card" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal__head">
+                <span className="modal__title">
+                  {s.name} <span className="modal__at">· {clock(s.at)}</span>
+                </span>
+                <button className="modal__x" onClick={() => setSfxOpen && setSfxOpen(null)} aria-label="Close">✕</button>
+              </div>
+              <div className="modal__vol">
+                <span className="modal__motion-label">Volume</span>
+                <div className="modal__slider">
+                  <input
+                    type="range" min={0} max={1} step={0.05} value={s.volume}
+                    onChange={(e) => setSfxVolume && setSfxVolume(s.id, +e.target.value)}
+                  />
+                  <span className="trdur__val">{Math.round(s.volume * 100)}%</span>
+                </div>
+              </div>
+              <div className="modal__actions" style={{ marginTop: 14 }}>
+                <button
+                  className="mbtn mbtn--danger"
+                  onClick={() => { removeSfx && removeSfx(s.id); setSfxOpen && setSfxOpen(null); }}
+                >Remove</button>
+                <button className="mbtn" onClick={() => setSfxOpen && setSfxOpen(null)}>Done</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </section>
   );
 }

@@ -63,6 +63,7 @@ audioLayers,
     zoom = 1,
     scrollRef,
     onAddAudioClip,
+    sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
   }) {
    const trackRef = useRef(null);
    const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
@@ -80,6 +81,31 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
     const x = Math.min(Math.max(clientX - r.left, 0), r.width);
     return (x / r.width) * duration;
   }, [duration]);
+
+  // Click empty FX-lane space to drop the selected sound at the pointer.
+  const onFxLaneDown = useCallback((e) => {
+    if (e.target !== e.currentTarget || !onSfxAdd) return;
+    onSfxAdd(+laneXToTime(e.clientX).toFixed(3));
+  }, [onSfxAdd, laneXToTime]);
+
+  // An FX marker opens its edit popover on a clean tap; dragging it (>4px) moves
+  // the sound along the lane instead.
+  const onSfxMarkerDown = useCallback((e, id) => {
+    e.stopPropagation();
+    const origin = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const move = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) > 4) moved = true;
+      if (moved && onSfxMove) onSfxMove(id, +laneXToTime(ev.clientX).toFixed(3));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!moved && onSfxOpen) onSfxOpen(id);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [laneXToTime, onSfxMove, onSfxOpen]);
 
   // Scrub the playhead. Reference the track's box for x/width; the ruler and
   // audio lane are horizontally aligned with it, so this works for all three.
@@ -358,6 +384,7 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
         <div className="tl__gutter">
           <span className="tl__tag">V</span>
           <span className="tl__tag tl__tag--audio">A</span>
+          <span className="tl__tag tl__tag--fx">FX</span>
         </div>
 
         <div className="tl__track" ref={trackRef}>
@@ -527,6 +554,26 @@ const [selectedAudioClip, setSelectedAudioClip] = useState(null); // { layerId, 
               />
             </div>
           ))}
+
+          <div
+            className="tl__lane tl__lane--fx"
+            onPointerDown={onFxLaneDown}
+            title="Click to place the selected sound · drag a marker to move · click a marker to edit"
+          >
+            {sfx.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className="sfxmark"
+                style={{ left: pctZoom(s.at) }}
+                title={`${s.name} · ${label(s.at)}`}
+                onPointerDown={(e) => onSfxMarkerDown(e, s.id)}
+              >
+                <span className="sfxmark__line" />
+                <span className="sfxmark__label">{s.name}</span>
+              </button>
+            ))}
+          </div>
 
           <div className="tl__playhead" style={{ left: pctZoom(time) }}>
             <span className="tl__playhead-grip" />

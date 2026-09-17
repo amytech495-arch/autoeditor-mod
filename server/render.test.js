@@ -122,6 +122,39 @@ describe("buildRenderPlan", () => {
   });
 });
 
+describe("sound effects (FX lane)", () => {
+  const sfxClips = [{ id: "s1", path: "whoosh.mp3", at: 2, volume: 0.5 }];
+
+  it("forces the graph path and mixes an effect at its marker time", () => {
+    const p = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"] },
+      { ...io, sfxClips }
+    );
+    expect(p.mode).toBe("graph"); // concat cannot mix per-marker audio
+    expect(p.args.join(" ")).toContain("-i whoosh.mp3");
+    const fc = filterText(p);
+    expect(fc).toContain("volume=0.500");
+    expect(fc).toContain("adelay=2000|2000[sfx0]");
+    expect(fc).toContain("amix=inputs=2"); // voiceover + the effect
+  });
+
+  it("adds effects to the single audio mix of a segmented render", () => {
+    const N = 130, D = 2, TD = 0.4;
+    const many = Array.from({ length: N }, (_, k) => ({ name: "c" + k, start: +(k * (D - TD)).toFixed(3), duration: D, gap: false }));
+    const paths = Array.from({ length: N }, (_, k) => "img" + k + ".png");
+    const trans = many.map((_, k) => (k === 0 ? "cut" : "fade"));
+    const p = buildRenderPlan(
+      { ...base, clips: many, transitions: trans, transitionDuration: TD },
+      { paths, audioName: "audio.mp3", capChain: "", sfxClips }
+    );
+    expect(p.mode).toBe("segmented");
+    const join = p.passes[p.passes.length - 1];
+    expect(join.args.join(" ")).toContain("-i whoosh.mp3");
+    const afc = join.filterFiles.find((f) => f.name === "fc_audio.txt");
+    expect(afc.text).toContain("adelay=2000|2000[sfx0]");
+  });
+});
+
 describe("image overlay (watermark)", () => {
   it("forces the graph path and burns the watermark on top of everything", () => {
     const p = buildRenderPlan(

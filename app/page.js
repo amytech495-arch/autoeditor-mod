@@ -127,6 +127,16 @@ export default function Home() {
   const [audioLayers, setAudioLayers] = useState([]);
   const [nextAudioLayerId, setNextAudioLayerId] = useState(1);
   const [nextAudioClipId, setNextAudioClipId] = useState(1);
+  // Sound effects placed on the timeline's FX lane (library presets or uploads).
+  // Each: { id, name, src, at, volume } where src is { kind:"lib", file } or
+  // { kind:"upload", mediaId }. sfxUploads holds the decoded blob for uploads.
+  const [sfx, setSfx] = useState([]);
+  const [sfxUploads, setSfxUploads] = useState([]); // { mediaId, label, url, _file }
+  const [selectedSound, setSelectedSound] = useState(null); // { name, url, src } to place next
+  const [sfxOpen, setSfxOpen] = useState(null); // id of the marker open in the edit modal
+  // Master gain for the whole FX lane (0–1), applied on top of each marker's volume
+  // in the preview and both export paths.
+  const [sfxMaster, setSfxMaster] = useState(1);
   // Video overlay (e.g., old film texture)
   const [overlayFile, setOverlayFile] = useState(null);
   const [overlayUrl, setOverlayUrl] = useState(null);
@@ -342,6 +352,64 @@ export default function Home() {
       return next;
     });
   }, []);
+
+  // --- Sound effects (FX lane) ----------------------------------------------
+  const addSfx = useCallback((at) => {
+    if (!selectedSound) return;
+    setSfx((prev) => [...prev, {
+      id: crypto.randomUUID ? crypto.randomUUID() : `sfx-${Date.now()}`,
+      name: selectedSound.name,
+      src: selectedSound.src,
+      at: Math.max(0, +at || 0),
+      volume: 0.8,
+    }]);
+  }, [selectedSound]);
+
+  const moveSfx = useCallback((id, at) => {
+    setSfx((prev) => prev.map((s) => (s.id === id ? { ...s, at: Math.max(0, +at || 0) } : s)));
+  }, []);
+
+  const setSfxVolume = useCallback((id, v) => {
+    setSfx((prev) => prev.map((s) => (s.id === id ? { ...s, volume: Math.min(1, Math.max(0, +v || 0)) } : s)));
+  }, []);
+
+  const removeSfx = useCallback((id) => {
+    setSfx((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const uploadSfx = useCallback((file) => {
+    if (!file) return;
+    const mediaId = `sfx-${newId()}`;
+    const url = URL.createObjectURL(file);
+    const label = file.name.replace(/\.[^.]+$/, "") || "sound";
+    setSfxUploads((prev) => [...prev, { mediaId, label, url, _file: file }]);
+    setSelectedSound({ name: label, url, src: { kind: "upload", mediaId } });
+  }, []);
+
+  // Delete an uploaded sound: drop the stored file, any placed markers that used
+  // it (library presets are untouched), and clear it from the "place next" pick.
+  const removeSfxUpload = useCallback((mediaId) => {
+    setSfxUploads((prev) => {
+      const up = prev.find((u) => u.mediaId === mediaId);
+      if (up && up.url) { try { URL.revokeObjectURL(up.url); } catch (_) {} }
+      return prev.filter((u) => u.mediaId !== mediaId);
+    });
+    setSfx((prev) => prev.filter((s) => !(s.src && s.src.kind === "upload" && s.src.mediaId === mediaId)));
+    setSelectedSound((sel) => (sel && sel.src && sel.src.kind === "upload" && sel.src.mediaId === mediaId ? null : sel));
+  }, []);
+
+  // Resolve a placed sound's source to a playable/decodable URL.
+  const resolveSfxUrl = useCallback((src) => {
+    if (!src) return null;
+    if (src.kind === "lib") return src.file;
+    const up = sfxUploads.find((u) => u.mediaId === src.mediaId);
+    return up ? up.url : null;
+  }, [sfxUploads]);
+
+  const sfxResolved = useMemo(
+    () => sfx.map((s) => ({ id: s.id, at: s.at, volume: Math.max(0, Math.min(1, (s.volume == null ? 0.8 : s.volume) * sfxMaster)), url: resolveSfxUrl(s.src) })),
+    [sfx, sfxMaster, resolveSfxUrl]
+  );
 
   // Import images, merged by timestamp: a file whose timestamp matches an
   // existing slot fills/replaces it; otherwise it becomes a new slot.
@@ -673,21 +741,6 @@ export default function Home() {
   // A new voiceover resets any prior trim to the full length.
   useEffect(() => { setTrimEnd(audioDuration); }, [audioDuration]);
 
-  // Always give the timeline a dedicated SFX lane to drop sound effects onto.
-  useEffect(() => {
-    setAudioLayers((prev) => {
-      if (prev.some((l) => /sfx/i.test(l.name))) return prev;
-      return [...prev, {
-        id: `al-sfx-${Date.now()}`,
-        name: "SFX",
-        volume: 0.5,
-        muted: false,
-        solo: false,
-        clips: [],
-      }];
-    });
-  }, []);
-
   const exportDuration = trimEnd > 0 ? Math.min(trimEnd, audioDuration) : audioDuration;
 
   const ready = audioFile && clips.length > 0;
@@ -711,7 +764,8 @@ export default function Home() {
     try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch (_) {}
     setAudioFile(null); setAudioUrl(null); setAudioDuration(0); setPeaks([]);
     setAudioLayers([]);
-    setNextAudioLayerId(1);
+    setNextAudioLayerId(1); setNextAudioClipId(1);
+    setSfx([]); setSfxUploads([]); setSelectedSound(null); setSfxOpen(null); setSfxMaster(1);
     setOverlayFile(null); setOverlayUrl(null); setOverlayDuration(0);
     setOverlayOpacity(0.3); setOverlayBlendMode("overlay"); setOverlayLoop(true); setOverlayEnabled(false);
     setWatermarkFile(null); setWatermarkUrl(null); setWatermarkEnabled(false);
@@ -771,12 +825,15 @@ export default function Home() {
         volume: c.volume,
       })),
     })),
+    sfx: sfx.map((s) => ({ id: s.id, name: s.name, src: s.src, at: s.at, volume: s.volume })),
+    sfxUploads: sfxUploads.map((u) => ({ mediaId: u.mediaId, label: u.label })),
+    sfxMaster,
     idCounter: idRef.current,
     built,
   }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd,
       motionByName, fxByName, trimByName, volumeByName, fitByName,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      transitionsByName, slots, audioFile, audioLayers, built]);
+      transitionsByName, slots, audioFile, audioLayers, sfx, sfxUploads, sfxMaster, built]);
 
   const saveCurrent = useCallback(async () => {
     const proj = currentProject;
@@ -794,10 +851,11 @@ export default function Home() {
       for (const l of audioLayers) {
         for (const c of l.clips) if (c.file) wanted.set(c.id, c.file);
       }
+      for (const u of sfxUploads) if (u._file) wanted.set(u.mediaId, u._file);
       await syncMedia(proj.id, wanted);
       try { setStorage(await storageEstimate()); } catch (_) {}
     } catch (_) { /* storage full or unavailable — keep editing */ }
-  }, [currentProject, loadingProject, makeThumb, exportDuration, clips.length, buildProjectData, audioFile, slots, audioLayers]);
+  }, [currentProject, loadingProject, makeThumb, exportDuration, clips.length, buildProjectData, audioFile, slots, audioLayers, sfxUploads]);
   saveRef.current = saveCurrent;
 
   // Debounced autosave whenever the composition changes.
@@ -808,7 +866,7 @@ export default function Home() {
   }, [view, currentProject, loadingProject, slots, transitionsByName, aspect, fps, renderQuality, transitionDuration,
       fadeIn, fadeOut, motionByName, motionAmount, trimByName, volumeByName, fitByName, trimEnd,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      audioFile, audioLayers, built]);
+      audioFile, audioLayers, sfx, sfxUploads, sfxMaster, built]);
 
   const openProject = useCallback(async (id) => {
     const rec = await getProject(id);
@@ -886,6 +944,18 @@ export default function Home() {
           setNextAudioClipId(maxClipId + 1);
         }
       }
+      // Uploaded sound effects, then the placed markers that reference them.
+      const sfxUps = (await Promise.all((d.sfxUploads || []).map(async (u) => {
+        const blob = await getMedia(id, u.mediaId);
+        if (!blob) return null;
+        const file = new File([blob], `${u.label || "sound"}.mp3`, { type: blob.type || "audio/mpeg" });
+        return { mediaId: u.mediaId, label: u.label || "sound", url: URL.createObjectURL(file), _file: file };
+      }))).filter(Boolean);
+      setSfxUploads(sfxUps);
+      setSfx(d.sfx || []);
+      setSelectedSound(null);
+      setSfxOpen(null);
+      setSfxMaster(d.sfxMaster ?? 1);
       resetDoc({ slots: newSlots, transitionsByName: d.transitionsByName || {} });
       const st = d.settings || {};
       setAspect(st.aspect ?? "16:9"); setFps(st.fps ?? 30); setRenderQuality(st.renderQuality ?? "full");
@@ -992,7 +1062,7 @@ export default function Home() {
         width: renderDims.width, height: renderDims.height, fps,
         transitions, transitionDuration, motions, motionAmount, fx, fxAmount, trims, volumes, speeds, fadeIn, fadeOut,
         captions, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-        audioLayers,
+        audioLayers, sfx: sfxResolved,
         overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
         watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         textOverlays,
@@ -1006,7 +1076,7 @@ export default function Home() {
     }
   }, [clips, exportDuration, imagesByName, videosByName, audioFile, renderDims, fps, transitionsByName, transitionDuration,
       motionByName, motionAmount, fxByName, fxAmount, trimByName, volumeByName, fitByName, videoInfoByName, fadeIn, fadeOut,
-      captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, audioLayers,
+      captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, audioLayers, sfxResolved,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled]);
 
@@ -1100,7 +1170,7 @@ export default function Home() {
           videosByName, trims, speeds, volumes,
           cues: captionsOn && captionCues.length ? captionCues : null,
           captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-          audioLayers,
+          audioLayers, sfx: sfxResolved,
           overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
           watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         },
@@ -1177,6 +1247,7 @@ export default function Home() {
   }, [clips, exportDuration, transitionsByName, motionByName, fxByName, imagesByName, renderDims, fps, transitionDuration, motionAmount, fxAmount, audioFile,
       videosByName, videoInfoByName, fitByName, trimByName, volumeByName, currentProject, flashDone, wcProfile,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
+      audioLayers, sfxResolved,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled]);
 
@@ -1404,6 +1475,11 @@ export default function Home() {
           addAudioLayer={addAudioLayer}
           addAudioClipToLayer={addAudioClipToLayer} removeAudioClip={removeAudioClip}
           updateAudioClip={updateAudioClip}
+          sfx={sfx} addSfx={addSfx} moveSfx={moveSfx} setSfxVolume={setSfxVolume}
+          removeSfx={removeSfx} uploadSfx={uploadSfx} removeSfxUpload={removeSfxUpload}
+          selectedSound={selectedSound} setSelectedSound={setSelectedSound}
+          sfxUploads={sfxUploads} sfxOpen={sfxOpen} setSfxOpen={setSfxOpen}
+          sfxMaster={sfxMaster} setSfxMaster={setSfxMaster}
           overlayUrl={overlayUrl} overlayDuration={overlayDuration}
           setOverlayFile={setOverlayFile} setOverlayUrl={setOverlayUrl}
           setOverlayDuration={setOverlayDuration}
