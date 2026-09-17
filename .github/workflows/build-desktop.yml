@@ -15,6 +15,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+
 jobs:
   desktop:
     strategy:
@@ -23,9 +26,11 @@ jobs:
         include:
           - runner: windows-latest
             arch: win
+            asset: AutoEditorModv1.3-Windows.zip
             build: node build-dist.mjs
           - runner: macos-14 # Apple Silicon (arm64)
             arch: mac-arm64
+            asset: AutoEditorModv1.3-macOS-arm64.zip
             build: node build-dist-mac.mjs
     runs-on: ${{ matrix.runner }}
     steps:
@@ -48,8 +53,8 @@ jobs:
       - name: Upload zip
         uses: actions/upload-artifact@v4
         with:
-          name: AutoEditor-${{ matrix.arch }}
-          path: dist/AutoEditor*.zip
+          name: ${{ matrix.arch }}
+          path: dist/${{ matrix.asset }}
           if-no-files-found: error
 
       - name: Attach to release
@@ -61,4 +66,4 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="${{ github.event.inputs.release_tag }}"; fi
           if [ -z "$TAG" ]; then echo "No target release; skipping attach."; exit 0; fi
-          gh release upload "$TAG" dist/AutoEditor*.zip --clobber
+          gh release upload "$TAG" "dist/${{ matrix.asset }}" --clobber
