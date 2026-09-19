@@ -1,12 +1,12 @@
-name: Build + publish distributables (Windows, Linux, macOS, Android)
+name: Build + publish distributables (one zip for all desktops + Android)
 
-# Builds every desktop + mobile distributable and, when run on a version tag
-# (or a workflow_dispatch with release_tag), creates the GitHub release page
-# itself and attaches all the zips to it. One push of a v* tag ships the lot:
-#   - AutoEditorModv1.5-Windows.zip       — Windows x64 (single exe + ffmpeg)
-#   - AutoEditorModv1.5-Linux.zip         — Linux source (builds on first run)
-#   - AutoEditorModv1.5-macOS-arm64.zip   — Apple Silicon
-#   - AutoEditorModv1.5-macOS-x64.zip     — Intel Mac
+# Builds every distributable and, when run on a version tag (or a
+# workflow_dispatch with release_tag), creates the GitHub release page itself
+# and attaches the zips to it. One push of a v* tag ships the lot:
+#   - AutoEditorModv1.5.zip               — ALL desktops in ONE zip: Windows
+#                                          / macOS Intel / macOS Apple Silicon
+#                                          / Linux, via the four "1 Run-*"
+#                                          launchers. Pre-built UI included.
 #   - AutoEditorModv1.5-Android.zip       — Termux on-device build
 # Run manually from the repo's Actions tab (leave release_tag empty to only
 # build + upload artifacts) or just push a version tag, e.g. git tag v1.5.
@@ -29,30 +29,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: windows
-            runner: windows-latest
-            arch: win
-            needs_npm: "true"
-            build: node build-dist.mjs
-            asset: AutoEditorModv1.5-Windows.zip
-          - name: linux
+          - name: all-desktops
             runner: ubuntu-latest
-            arch: linux
-            needs_npm: "false"
-            build: node build-dist-linux.mjs
-            asset: AutoEditorModv1.5-Linux.zip
-          - name: macos-arm64
-            runner: macos-14 # Apple Silicon (arm64)
-            arch: mac-arm64
-            needs_npm: "true"
-            build: node build-dist-mac.mjs
-            asset: AutoEditorModv1.5-macOS-arm64.zip
-          - name: macos-x64
-            runner: macos-15-intel # Intel mac (macos-13 is retired)
-            arch: mac-x64
-            needs_npm: "true"
-            build: node build-dist-mac.mjs
-            asset: AutoEditorModv1.5-macOS-x64.zip
+            arch: all-desktops
+            needs_npm: "false" # build-dist-unified.mjs installs + builds the UI itself
+            build: node build-dist-unified.mjs
+            asset: AutoEditorModv1.5.zip
           - name: android
             runner: ubuntu-latest
             arch: android
