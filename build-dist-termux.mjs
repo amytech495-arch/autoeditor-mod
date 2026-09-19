@@ -6,7 +6,7 @@
 //
 //   node build-dist-termux.mjs
 //
-// Produces:  dist/AutoEditorModv1.3-Android.zip
+// Produces:  dist/AutoEditorModv<VERSION>-Android.zip
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, copyFileSync, cpSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -14,12 +14,14 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = "1.3";
+const VERSION = process.env.DIST_VERSION || "1.5";
 const DIST = path.join(ROOT, "dist");
 const STAGE = path.join(os.tmpdir(), "autoeditor-build-termux");
 const OUT = path.join(STAGE, `AutoEditorModv${VERSION}-Android`);
 
 function run(cmd, cwd = ROOT) { console.log("> " + cmd); execSync(cmd, { cwd, stdio: "inherit" }); }
+
+function shellQuote(p) { return "'" + String(p).replace(/'/g, "'\\''") + "'"; }
 
 const START_SH = `#!/usr/bin/env bash
 # AutoEditor for Android (Termux).  Run:  bash start.sh
@@ -118,7 +120,7 @@ SETUP
 2. Open Termux and give it file access (once):
      termux-setup-storage
 3. Go to this folder (e.g. if it's in Downloads):
-     cd ~/storage/downloads/AutoEditorModv1.3-Android
+     cd ~/storage/downloads/AutoEditorModv${VERSION}-Android
 4. Run:
      bash start.sh
 
@@ -158,10 +160,14 @@ async function main() {
   mkdirSync(DIST, { recursive: true }); // keep dist/ — only overwrite our own zip
   const zip = path.join(DIST, `AutoEditorModv${VERSION}-Android.zip`);
   rmSync(zip, { force: true });
-  execSync(
-    `powershell -NoProfile -Command "Compress-Archive -Path '${OUT}' -DestinationPath '${zip}' -CompressionLevel Optimal -Force"`,
-    { stdio: "inherit" },
-  );
+  if (process.platform === "win32") {
+    execSync(
+      `powershell -NoProfile -Command "Compress-Archive -Path '${OUT}' -DestinationPath '${zip}' -CompressionLevel Optimal -Force"`,
+      { stdio: "inherit" },
+    );
+  } else {
+    execSync(`zip -r -q ${shellQuote(zip)} ${shellQuote(OUT)}`, { stdio: "inherit" });
+  }
   rmSync(STAGE, { recursive: true, force: true });
   console.log("\nDone. Share:  " + zip);
 }

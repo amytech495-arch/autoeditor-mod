@@ -1,3 +1,27 @@
+Version 1.5
+=========
+NEW — Save Config presets
+  A new Save Config panel right after Export saves the whole look of a
+  project as a named preset: export settings (aspect, fps, quality),
+  transitions, motion / advanced motion, image effects, scene fades, video
+  overlay, image overlay, and text overlays. Type a name and hit Save, then
+  re-apply any saved preset in one click or delete it. Presets are kept in
+  the browser's storage, so they carry over between projects on the same
+  machine. (Overlay video/image files aren't stored — only their settings —
+  so re-add the file after applying.)
+
+NEW — Back-to-top button
+  A sticky "↑ Back to top" button now sits at the bottom of the side panel
+  (after Text overlays) and scrolls the panel back up to the Export settings.
+
+CHANGED — Everything builds and ships as Version 1.5
+  All build scripts and the GitHub CI now produce AutoEditorModv1.5-<OS>
+  zips for every platform: Windows (single exe), macOS (Apple Silicon and
+  Intel), Linux (source), and Android (Termux). Pushing a version tag such
+  as "v1.5" builds all five in CI and publishes them to the release page
+  automatically.
+
+
 Version 1.4
 =========
 NEW — Sound effects

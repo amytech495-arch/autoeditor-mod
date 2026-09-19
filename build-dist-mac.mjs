@@ -5,7 +5,7 @@
 //
 //   node build-dist-mac.mjs
 //
-// Produces:  dist/AutoEditorModv1.3-macOS-<arch>.zip
+// Produces:  dist/AutoEditorModv<VERSION>-macOS-<arch>.zip
 // The single executable embeds the server; ffmpeg, the caption font and the UI
 // ship alongside it and are self-located at runtime. It ad-hoc code-signs the
 // binaries so macOS will run them (no Apple Developer ID = users right-click →
@@ -22,7 +22,7 @@ if (process.platform !== "darwin") {
 }
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = "1.3";
+const VERSION = process.env.DIST_VERSION || "1.5";
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 const ARCH = process.arch; // "arm64" or "x64"
 const DIST = path.join(ROOT, "dist");

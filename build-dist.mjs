@@ -1,7 +1,7 @@
 // Build the shareable, zero-install Windows distributable as a single compiled
 // exe (Node SEA + esbuild). Run on a dev machine with Node + npm + internet:
 //   node build-dist.mjs      (or double-click build-dist.bat)
-// Produces:  dist\AutoEditorModv1.3-Windows.zip
+// Produces:  dist\AutoEditorModv<VERSION>-Windows.zip
 //
 // The exe embeds the bundled server; ffmpeg, the caption font, and the UI ship
 // alongside it and are located via env vars set by the packaged start.bat.
@@ -13,7 +13,7 @@ import https from "node:https";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = "1.3";
+const VERSION = process.env.DIST_VERSION || "1.5";
 const NODE_VER = "v20.18.1";
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 const DIST = path.join(ROOT, "dist");
@@ -74,10 +74,7 @@ async function main() {
   mkdirSync(DIST, { recursive: true }); // keep dist/ — only overwrite our own zip
   const zip = path.join(DIST, `AutoEditorModv${VERSION}-Windows.zip`);
   rmSync(zip, { force: true });
-  execFileSync("powershell", [
-    "-NoProfile", "-Command",
-    `Compress-Archive -Path '${OUT}' -DestinationPath '${zip}' -CompressionLevel Optimal -Force`,
-  ], { stdio: "inherit" });
+  run(`zip -r "${zip}" "${OUT}"`);
   rmSync(STAGE, { recursive: true, force: true });
 
   console.log("\nDone. Share:  " + zip);

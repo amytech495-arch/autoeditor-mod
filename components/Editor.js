@@ -30,6 +30,17 @@ function clock(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Saved configuration presets ("Save Config" panel). Kept in localStorage so
+// presets survive reloads and carry over between projects on the same machine.
+const PRESET_KEY = "autoeditor.save-config-presets.v1";
+function loadPresets() {
+  try {
+    const raw = localStorage.getItem(PRESET_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
 // Fade envelope for a BG clip at time t (seconds) within the clip, 0..duration.
 function fadeGain(t, clip) {
   const dur = clip.duration || 0;
@@ -81,7 +92,7 @@ export default function Editor({
   watermarkOpacity, setWatermarkOpacity,
   watermarkEnabled, setWatermarkEnabled,
   onWatermark,
-  textOverlays = [], addTextOverlay, updateTextOverlay, removeTextOverlay,
+  textOverlays = [], addTextOverlay, updateTextOverlay, removeTextOverlay, replaceTextOverlays,
 }) {
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
@@ -118,9 +129,107 @@ export default function Editor({
   const [currentFx, setCurrentFx] = useState("none"); // drives "Apply … to all" in Image Effects
   const [warn4k, setWarn4k] = useState(false); // transient "4K is heavy" toast on quality select
   const warnTimer = useRef(null);
-  useEffect(() => () => clearTimeout(warnTimer.current), []);
+  useEffect(() => () => { clearTimeout(warnTimer.current); clearTimeout(presetMsgTimer.current); }, []);
   // Sound-effect previews are one-shots — silence any still playing on unmount.
   useEffect(() => () => stopSfxPreviews(), []);
+
+  // Save Config panel: saved look presets (export + transitions + motion + fx +
+  // fades + overlays + text), persisted in localStorage.
+  const sideRef = useRef(null); // the scrolling <aside> — target of "↑ Back to top"
+  const presetMsgTimer = useRef(null);
+  const [presets, setPresets] = useState(loadPresets);
+  const [presetName, setPresetName] = useState("");
+  const [presetMsg, setPresetMsg] = useState(null); // transient saved/applied note
+
+  const persistPresets = useCallback((next) => {
+    setPresets(next);
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)); } catch { /* storage full/blocked */ }
+  }, []);
+
+  const flashPresetMsg = useCallback((msg) => {
+    setPresetMsg(msg);
+    clearTimeout(presetMsgTimer.current);
+    presetMsgTimer.current = setTimeout(() => setPresetMsg(null), 4500);
+  }, []);
+
+  // Snapshot the current look into a preset. Media files (overlay video/image)
+  // are session-only blob URLs, so the file itself isn't stored — its settings
+  // are; the user re-adds the file after applying.
+  const savePreset = useCallback(() => {
+    const name = presetName.trim();
+    if (!name) { flashPresetMsg("Give the preset a name first."); return; }
+    const config = {
+      aspect, fps, renderQuality,
+      transitionDuration,
+      transitions: transitionsByName,
+      motionAmount, motion: motionByName,
+      fxAmount, fx: fxByName,
+      fadeIn, fadeOut,
+      overlayEnabled, overlayOpacity, overlayBlendMode, overlayLoop,
+      watermarkEnabled, watermarkSize, watermarkX, watermarkY, watermarkOpacity,
+      textOverlays: (Array.isArray(textOverlays) ? textOverlays : []).map((o) => ({
+        text: o.text, start: o.start, end: o.end, x: o.x, y: o.y, size: o.size, opacity: o.opacity, color: o.color,
+      })),
+    };
+    const entry = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}`,
+      name,
+      savedAt: Date.now(),
+      config,
+    };
+    persistPresets([entry, ...presets.filter((p) => p.id !== entry.id)]);
+    setPresetName("");
+    flashPresetMsg(`Saved preset “${name}”.`);
+  }, [presetName, presets, persistPresets, flashPresetMsg, aspect, fps, renderQuality,
+      transitionDuration, transitionsByName, motionAmount, motionByName, fxAmount, fxByName,
+      fadeIn, fadeOut, overlayEnabled, overlayOpacity, overlayBlendMode, overlayLoop,
+      watermarkEnabled, watermarkSize, watermarkX, watermarkY, watermarkOpacity, textOverlays]);
+
+  // Re-apply a saved preset to the current project. Per-clip transitions / motion /
+  // effects are matched by clip name, so they only land on clips with the same names.
+  const applyPreset = useCallback((p) => {
+    const c = (p && p.config) || {};
+    if (c.aspect != null && setAspect) setAspect(c.aspect);
+    if (c.fps != null && setFps) setFps(c.fps);
+    if (c.renderQuality != null && setRenderQuality) setRenderQuality(c.renderQuality);
+    if (c.transitionDuration != null && setTransitionDuration) setTransitionDuration(c.transitionDuration);
+    for (const [name, type] of Object.entries(c.transitions || {})) setTransition(name, type);
+    if (c.motionAmount != null && setMotionAmount) setMotionAmount(c.motionAmount);
+    for (const [name, type] of Object.entries(c.motion || {})) setMotion(name, type);
+    if (c.fxAmount != null && setFxAmount) setFxAmount(c.fxAmount);
+    for (const [name, id] of Object.entries(c.fx || {})) setFx(name, id);
+    if (c.fadeIn != null && setFadeIn) setFadeIn(c.fadeIn);
+    if (c.fadeOut != null && setFadeOut) setFadeOut(c.fadeOut);
+    if (c.overlayEnabled != null && setOverlayEnabled) setOverlayEnabled(!!c.overlayEnabled);
+    if (c.overlayOpacity != null && setOverlayOpacity) setOverlayOpacity(c.overlayOpacity);
+    if (c.overlayBlendMode != null && setOverlayBlendMode) setOverlayBlendMode(c.overlayBlendMode);
+    if (c.overlayLoop != null && setOverlayLoop) setOverlayLoop(!!c.overlayLoop);
+    if (c.watermarkEnabled != null && setWatermarkEnabled) setWatermarkEnabled(!!c.watermarkEnabled);
+    if (c.watermarkSize != null && setWatermarkSize) setWatermarkSize(c.watermarkSize);
+    if (c.watermarkX != null && setWatermarkX) setWatermarkX(c.watermarkX);
+    if (c.watermarkY != null && setWatermarkY) setWatermarkY(c.watermarkY);
+    if (c.watermarkOpacity != null && setWatermarkOpacity) setWatermarkOpacity(c.watermarkOpacity);
+    if (c.textOverlays && Array.isArray(c.textOverlays) && replaceTextOverlays) {
+      replaceTextOverlays(c.textOverlays.map((o, i) => ({
+        ...o,
+        id: crypto.randomUUID ? crypto.randomUUID() : `to-${Date.now()}-${i}`,
+      })));
+    }
+    flashPresetMsg(`Applied preset “${p.name}”. Overlay files (if any) need re-adding.`);
+  }, [setTransition, setMotion, setFx, setFadeIn, setFadeOut, setOverlayEnabled, setOverlayOpacity,
+      setOverlayBlendMode, setOverlayLoop, setWatermarkEnabled, setWatermarkSize, setWatermarkX,
+      setWatermarkY, setWatermarkOpacity, replaceTextOverlays, flashPresetMsg]);
+
+  const deletePreset = useCallback((id) => {
+    const gone = presets.find((p) => p.id === id);
+    persistPresets(presets.filter((p) => p.id !== id));
+    if (gone) flashPresetMsg(`Deleted preset “${gone.name}”.`);
+  }, [presets, persistPresets, flashPresetMsg]);
+
+  const backToTop = useCallback(() => {
+    const sc = sideRef.current;
+    if (sc && typeof sc.scrollTo === "function") sc.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   // Resolve each placed marker's source to a playable URL (library preset or upload).
   const sfxUrlFor = useCallback((src) => {
@@ -858,7 +967,7 @@ export default function Editor({
         />
       </div>
 
-      <aside className="side">
+      <aside className="side" ref={sideRef}>
         <div className="panel export">
           <h2 className="panel__h">Export</h2>
 
@@ -965,6 +1074,65 @@ export default function Editor({
           )}
           {outUrl && <a className="download" href={outUrl} download="story.mp4">↓ Download MP4</a>}
           {error && <div className="note note--bad">{error}</div>}
+        </div>
+
+        <div className="panel save-config">
+          <h2 className="panel__h">Save Config</h2>
+          <div className="mini-h">Save the current look — export settings, transitions, motion, advanced motion, image effects, scene fades, video/image overlays and text overlays — as a preset, then re-apply it in one click.</div>
+
+          <label className="trdur" style={{ marginTop: 8 }}>
+            <span style={{ flexShrink: 0 }}>Preset name</span>
+            <input
+              type="text"
+              value={presetName}
+              placeholder="e.g. Cinematic 4K"
+              onChange={(e) => setPresetName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") savePreset(); }}
+              aria-label="Preset name"
+            />
+          </label>
+          <button type="button" className="trall" onClick={savePreset} style={{ marginTop: 6 }}>
+            Save current config as a preset
+          </button>
+
+          <div className="mini-h" style={{ marginTop: 12 }}>Saved presets — click to apply.</div>
+          {presets.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+              {presets.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    title={`Apply “${p.name}”`}
+                    style={{
+                      flex: 1, minWidth: 0, textAlign: "left", font: "inherit", fontSize: 13,
+                      color: "var(--text)", background: "var(--panel-2)", border: "1px solid var(--line)",
+                      borderRadius: 9, padding: "7px 10px", cursor: "pointer", display: "flex",
+                      alignItems: "center", gap: 8,
+                    }}
+                  >
+                    <span
+                      style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >{p.name}</span>
+                    <span style={{ fontSize: 10.5, color: "var(--muted)", flexShrink: 0 }}>
+                      {p.config && p.config.aspect && p.config.fps ? `${p.config.aspect} · ${p.config.fps}fps` : ""}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="mbtn mbtn--danger"
+                    onClick={() => deletePreset(p.id)}
+                    aria-label={`Delete preset ${p.name}`}
+                    title="Delete preset"
+                    style={{ flex: "0 0 auto", minWidth: 0, width: 34, padding: "8px 0", lineHeight: 1 }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mini-h" style={{ marginTop: 6 }}>No presets yet — name one above and hit Save.</div>
+          )}
+          {presetMsg && <div className="note" role="status" style={{ marginTop: 10 }}>{presetMsg}</div>}
         </div>
 
         <div className="panel transitions">
@@ -1850,6 +2018,15 @@ export default function Editor({
           </div>
         </div>
 
+        <button
+          type="button"
+          className="trall totop"
+          onClick={backToTop}
+          style={{ position: "sticky", bottom: 0, zIndex: 5, marginTop: 0, boxShadow: "0 0 0 1px rgba(255,255,255,.03), 0 -6px 12px rgba(0,0,0,.35)", background: "var(--panel-2)" }}
+          title="Scroll back to the top of the side panel"
+        >
+          ↑ Back to top
+        </button>
       </aside>
 
       <input
