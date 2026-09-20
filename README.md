@@ -60,37 +60,12 @@ On first run `start.sh` installs Node.js + ffmpeg, takes a wake-lock (renders su
 
 Android Video Guide link: https://youtu.be/1DSjtlKI_lA?si=Lp_EJn-UN5jqLtob
 
-### Development mode
-
-```bash
-npm install
-NEXT_PUBLIC_RENDER_URL=http://localhost:4000 npm run dev   # terminal 1 — UI on :3000
-OPEN_BROWSER=1 node server/index.js                        # terminal 2 — backend on :4000
-```
-
-### Tests
-
-```bash
-npm test
-```
-
-## Sidecar server (FFmpeg / local render)
-
-The app runs fully in the browser, but an optional sidecar server enables FFmpeg rendering and adds PNG/office import. See `server/` — it is bundled into the distributed builds so users don't install anything.
-
-## Distributed builds
-
-Prebuilt folders for Windows, macOS, and termux are produced by:
-
-- `build-dist.mjs`
-- `build-dist-mac.mjs`
-- `build-dist-termux.mjs`
-
-End users just double-click `AutoEditor.exe` (or the equivalent launcher) — see `dist-assets/READ ME FIRST.txt` for the user guide.
+### Disclosure
+I'm not a professional developer, im just a creator that vibe coded this app that suits my workflow in content creation using this AutoEditor.
 
 ## Changelog
 
-See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history. Current: **Version 1.3**.
+See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history.  
 
 ## Credits
 
