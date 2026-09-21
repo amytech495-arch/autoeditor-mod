@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import ffmpegStatic from "ffmpeg-static";
 import { xfadeName, MIN_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from "./transitions.js";
 import { buildCaptionBurn, buildTextOverlayBurn, CAPTION_FONT } from "./captions.js";
+import { voiceFxFilterString } from "../lib/voiceFx.js";
 
 // Crash-safe module dir: import.meta.url works in ESM (dev); in the bundled/SEA
 // build it's empty, so fall back to cwd (prod overrides the paths via env anyway).
@@ -175,10 +176,12 @@ function videoCodecArgs(encoder) {
 // -filter_complex_script, NOT passed on the command line. With captions there's
 // one drawtext per line, so the graph can exceed the OS command-line length
 // limit (Windows ~32k → spawn ENAMETOOLONG). Reading from a file avoids that.
-function concatArgs({ audioName, width, height, fps, fadeIn, fadeOut, total, capChain, encoder }, filterFiles) {
+function concatArgs({ audioName, width, height, fps, fadeIn, fadeOut, total, capChain, encoder, voiceFx }, filterFiles) {
   const vf = [vfChain(width, height, fps), ...(capChain ? [capChain] : []), ...fadeVideo(fadeIn, fadeOut, total)].join(",");
   filterFiles.push({ name: "vf.txt", text: vf });
-  const af = fadeAudio(fadeIn, fadeOut, total);
+  // The voiceover is the only audio stream in concat mode, so -af both carries the
+  // voice-over effect and the fades.
+  const af = [...(voiceFxFilterString(voiceFx) ? [voiceFxFilterString(voiceFx)] : []), ...fadeAudio(fadeIn, fadeOut, total)];
   const args = ["-f", "concat", "-safe", "0", "-i", "concat.txt", "-i", audioName, "-filter_script:v", "vf.txt"];
   if (af.length) args.push("-af", af.join(","));
   args.push(
@@ -247,7 +250,7 @@ function sfxClipFilters(s) {
   return out;
 }
 
-function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, sfxClips = [] }, filterFiles) {
+function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, sfxClips = [], voiceFx }, filterFiles) {
   const n = clips.length;
   const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds });
   let last = vEnd;
@@ -301,13 +304,18 @@ function graphArgs({ clips, paths, audioName, width, height, fps, transitions, t
     vAudio.push(`[${lbl}]`);
   }
   let amap;
+  // Voice-over effect: run the narration (input n) through the effect chain first,
+  // then feed it into the mix (or use it directly when there is nothing to mix on).
+  const vfx = voiceFxFilterString(voiceFx);
+  if (vfx) parts.push(`[${n}:a]${vfx}[vfx]`);
+  const vo = vfx ? "[vfx]" : `[${n}:a]`;
   if (vAudio.length) {
-    parts.push(`[${n}:a]${vAudio.join("")}amix=inputs=${vAudio.length + 1}:normalize=0:dropout_transition=0[amx]`);
+    parts.push(`${vo}${vAudio.join("")}amix=inputs=${vAudio.length + 1}:normalize=0:dropout_transition=0[amx]`);
     if (af.length) { parts.push(`[amx]${af.join(",")}[aout]`); amap = "[aout]"; }
     else amap = "[amx]";
   } else {
-    amap = `${n}:a`;
-    if (af.length) { parts.push(`[${n}:a]${af.join(",")}[aout]`); amap = "[aout]"; }
+    if (af.length) { parts.push(`${vo}${af.join(",")}[aout]`); amap = "[aout]"; }
+    else amap = vfx ? "[vfx]" : `${n}:a`;
   }
 
   const sfxInputs = sfxClips.flatMap((s) => ["-i", s.path]);
@@ -336,7 +344,7 @@ const SEGMENT_MAX = Math.max(10, parseInt(process.env.RENDER_SEGMENT_MAX || "60"
 // captions and fades baked in, so the joined video is just copied through. `concatName` is a
 // concat-demuxer list file; `audioFc` an optional filter_complex script for the audio mix.
 // Returns { args, text } (text = "" when the audio needs no filtergraph).
-function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fadeOut, total }, concatName, audioFc) {
+function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fadeOut, total, voiceFx }, concatName, audioFc) {
   // input 0 = concat video, input 1 = voiceover, audible clip audio follows.
   const parts = [], vAudio = [], audioInputs = [];
   let ai = 2;
@@ -360,13 +368,17 @@ function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fa
   }
   const af = fadeAudio(fadeIn, fadeOut, total);
   let amap;
+  // Voice-over effect chain on input 1 (the narration), applied before the mix.
+  const vfx = voiceFxFilterString(voiceFx);
+  if (vfx) parts.push(`[1:a]${vfx}[vfx]`);
+  const vo = vfx ? "[vfx]" : `[1:a]`;
   if (vAudio.length) {
-    parts.push(`[1:a]${vAudio.join("")}amix=inputs=${vAudio.length + 1}:normalize=0:dropout_transition=0[amx]`);
+    parts.push(`${vo}${vAudio.join("")}amix=inputs=${vAudio.length + 1}:normalize=0:dropout_transition=0[amx]`);
     if (af.length) { parts.push(`[amx]${af.join(",")}[aout]`); amap = "[aout]"; } else amap = "[amx]";
   } else if (af.length) {
-    parts.push(`[1:a]${af.join(",")}[aout]`); amap = "[aout]";
+    parts.push(`${vo}${af.join(",")}[aout]`); amap = "[aout]";
   } else {
-    amap = "1:a";
+    amap = vfx ? "[vfx]" : "1:a";
   }
   const args = [
     "-f", "concat", "-safe", "0", "-i", concatName,
@@ -391,6 +403,7 @@ function buildSegmentedPlan(spec, io) {
   const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.08, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
     captions, captionStyle = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none",
     textOverlays,
+    voiceFx,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false } = spec;
   const { paths, audioName, encoder = "libx264", audible, overlayName = null, watermarkName = null, sfxClips = [] } = io;
@@ -493,7 +506,7 @@ function buildSegmentedPlan(spec, io) {
   const vidTotal = acc; // video length = summed segment durations (cut boundaries add no overlap)
   const concatTxt = segFiles.map((f) => `file '${f}'`).join("\n") + "\n";
   const audioFc = "fc_audio.txt";
-  const { args, text } = buildConcatAudioArgs({ audioName, audioClips, sfxClips, fadeIn, fadeOut, total: vidTotal }, "segs.txt", audioFc);
+  const { args, text } = buildConcatAudioArgs({ audioName, audioClips, sfxClips, fadeIn, fadeOut, total: vidTotal, voiceFx }, "segs.txt", audioFc);
   const joinFiles = [{ name: "segs.txt", text: concatTxt }];
   if (text) joinFiles.push({ name: audioFc, text });
   passes.push({ name: "join (copy)", args, filterFiles: joinFiles, output: "output.mp4", total: vidTotal });
@@ -504,6 +517,7 @@ function buildSegmentedPlan(spec, io) {
 // io:   { paths: string[] (per-clip basenames), audioName, capChain, encoder }
 export function buildRenderPlan(spec, io) {
   const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.08, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
+    voiceFx,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false } = spec;
   const { paths, audioName, capChain = "", textChain = "", encoder = "libx264", audible, overlayName = null, watermarkName = null, sfxClips = [] } = io;
@@ -528,6 +542,7 @@ export function buildRenderPlan(spec, io) {
   // Big graph timelines are split into segments + a join to dodge the OS limits.
   if (useGraph && clips.length > SEGMENT_MAX) return buildSegmentedPlan(spec, io);
   const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, textChain, encoder,
+    voiceFx,
     overlayName, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
     watermarkName, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled, sfxClips };
   const filterFiles = [];

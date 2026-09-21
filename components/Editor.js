@@ -13,6 +13,7 @@ import {
 } from "../lib/captions";
 import { drawTextOverlays } from "../lib/textOverlay";
 import { SFX_LIB, previewSfx, stopSfxPreviews } from "../lib/sfx";
+import { VOICE_FX, buildVoiceFxNodes, sanitizeVoiceFx } from "../lib/voiceFx";
 
 
 function tc(t) {
@@ -77,6 +78,7 @@ export default function Editor({
   sfx = [], addSfx, moveSfx, setSfxVolume, removeSfx, uploadSfx, removeSfxUpload,
   selectedSound, setSelectedSound, sfxUploads = [], sfxOpen, setSfxOpen,
   sfxMaster = 1, setSfxMaster,
+  voiceFx, setVoiceFx,
   overlayUrl, overlayDuration,
   setOverlayFile, setOverlayUrl, setOverlayDuration,
   overlayOpacity, setOverlayOpacity,
@@ -96,6 +98,12 @@ export default function Editor({
 }) {
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
+  // Voice-over effect live preview: the narration <audio> element is routed through
+  // an AudioContext chain once the user applies an effect. vfxElSrc is created once
+  // per element; the node chain after it is rebuilt on every change.
+  const vfxCtxRef = useRef(null);       // AudioContext (lazily created on Apply)
+  const vfxElSrcRef = useRef(null);     // MediaElementAudioSourceNode
+  const vfxChainRef = useRef(null);     // live node chain of the current effect
   const bgAudioRefs = useRef(new Map()); // bg clip id -> <audio> element (preview playback)
   const overlayVideoRef = useRef(null); // overlay video element for preview
   const watermarkImgRef = useRef(null); // watermark image element for preview
@@ -133,6 +141,48 @@ export default function Editor({
   // Sound-effect previews are one-shots — silence any still playing on unmount.
   useEffect(() => () => stopSfxPreviews(), []);
 
+  // Route the narration element through the AudioContext chain matching the applied
+  // voice-over effect. Once routed, the element's audio ONLY flows through this
+  // graph, so every rebuild ends at ctx.destination (an empty node list = passthrough).
+  const applyLiveVoiceFx = useCallback(async (fx) => {
+    const a = audioRef.current;
+    const CtxCls = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
+    if (!a || !CtxCls) return;
+    let ctx = vfxCtxRef.current;
+    if (!ctx) { ctx = new CtxCls(); vfxCtxRef.current = ctx; }
+    if (ctx.state === "suspended") { try { await ctx.resume(); } catch (_) {} }
+    if (!vfxElSrcRef.current) {
+      try { vfxElSrcRef.current = ctx.createMediaElementSource(a); }
+      catch (_) { return; } // already routed by something else — leave the preview alone
+    }
+    // Swap the chain after the (permanent) element source.
+    if (vfxChainRef.current) { try { vfxChainRef.current.disconnect(); } catch (_) {} vfxChainRef.current = null; }
+    const nodes = buildVoiceFxNodes(ctx, fx);
+    let prev = vfxElSrcRef.current;
+    for (const n of nodes) { prev.connect(n); prev = n; }
+    prev.connect(ctx.destination);
+    vfxChainRef.current = { disconnect: () => { for (const n of nodes) { try { n.disconnect(); } catch (_) {} } } };
+  }, []);
+
+  // Re-sync the live preview whenever the applied effect or the voiceover changes.
+  useEffect(() => {
+    if (!audioUrl) return;
+    if (vfxCtxRef.current || voiceFx) applyLiveVoiceFx(voiceFx).catch(() => {});
+  }, [voiceFx, audioUrl, applyLiveVoiceFx]);
+
+  // Tear down the preview graph on unmount.
+  useEffect(() => () => {
+    if (vfxChainRef.current) { try { vfxChainRef.current.disconnect(); } catch (_) {} vfxChainRef.current = null; }
+    if (vfxCtxRef.current) { try { vfxCtxRef.current.close(); } catch (_) {} vfxCtxRef.current = null; }
+    vfxElSrcRef.current = null;
+  }, []);
+
+  // Voice Over Effect panel draft (effect + strength) — mirror of the applied value.
+  const [vfxDraft, setVfxDraft] = useState({ effect: "none", strength: 50 });
+  useEffect(() => {
+    setVfxDraft({ effect: voiceFx ? voiceFx.effect : "none", strength: voiceFx ? voiceFx.strength : 50 });
+  }, [voiceFx]);
+
   // Save Config panel: saved look presets (export + transitions + motion + fx +
   // fades + overlays + text), persisted in localStorage.
   const sideRef = useRef(null); // the scrolling <aside> — target of "↑ Back to top"
@@ -167,6 +217,7 @@ export default function Editor({
       fadeIn, fadeOut,
       overlayEnabled, overlayOpacity, overlayBlendMode, overlayLoop,
       watermarkEnabled, watermarkSize, watermarkX, watermarkY, watermarkOpacity,
+      voiceFx,
       textOverlays: (Array.isArray(textOverlays) ? textOverlays : []).map((o) => ({
         text: o.text, start: o.start, end: o.end, x: o.x, y: o.y, size: o.size, opacity: o.opacity, color: o.color,
       })),
@@ -183,7 +234,7 @@ export default function Editor({
   }, [presetName, presets, persistPresets, flashPresetMsg, aspect, fps, renderQuality,
       transitionDuration, transitionsByName, motionAmount, motionByName, fxAmount, fxByName,
       fadeIn, fadeOut, overlayEnabled, overlayOpacity, overlayBlendMode, overlayLoop,
-      watermarkEnabled, watermarkSize, watermarkX, watermarkY, watermarkOpacity, textOverlays]);
+      watermarkEnabled, watermarkSize, watermarkX, watermarkY, watermarkOpacity, voiceFx, textOverlays]);
 
   // Re-apply a saved preset to the current project. Per-clip transitions / motion /
   // effects are matched by clip name, so they only land on clips with the same names.
@@ -209,6 +260,7 @@ export default function Editor({
     if (c.watermarkX != null && setWatermarkX) setWatermarkX(c.watermarkX);
     if (c.watermarkY != null && setWatermarkY) setWatermarkY(c.watermarkY);
     if (c.watermarkOpacity != null && setWatermarkOpacity) setWatermarkOpacity(c.watermarkOpacity);
+    if (c.voiceFx != null && setVoiceFx) setVoiceFx(sanitizeVoiceFx(c.voiceFx));
     if (c.textOverlays && Array.isArray(c.textOverlays) && replaceTextOverlays) {
       replaceTextOverlays(c.textOverlays.map((o, i) => ({
         ...o,
@@ -670,6 +722,10 @@ export default function Editor({
     };
     const onPlay = () => {
       setPlaying(true);
+      // Keep the voice-over effect preview graph audible (resume on the play gesture).
+      if (vfxCtxRef.current && vfxCtxRef.current.state === "suspended") {
+        try { vfxCtxRef.current.resume(); } catch (_) {}
+      }
       // Start crossing detection from the current position (never retro-fire markers).
       sfxPrevRef.current = a.currentTime;
       cancelAnimationFrame(rafRef.current);
@@ -696,7 +752,14 @@ export default function Editor({
   const toggle = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
-    if (a.paused) a.play(); else a.pause();
+    if (a.paused) {
+      // The narration element is routed through the AudioContext once an effect has
+      // been applied, so make sure that context is audible when playback starts.
+      if (vfxCtxRef.current && vfxCtxRef.current.state === "suspended") {
+        try { vfxCtxRef.current.resume(); } catch (_) {}
+      }
+      a.play();
+    } else a.pause();
   }, []);
 
   // Coalesce rapid scrub seeks: while a seek is still settling (slow for WAV),
@@ -1778,6 +1841,65 @@ export default function Editor({
               })}
             </div>
           )}
+        </div>
+
+        <div className="panel voice-fx">
+          <h2 className="panel__h">Voice Over Effect</h2>
+          <div className="mini-h">
+            Enhance the narration before it is exported — bass, clarity, compression
+            or a retro radio effect. The preview plays the effect live once applied.
+          </div>
+          <div className="mini-h" style={{ marginTop: 12 }}>Effect</div>
+          <div className="sfxlist">
+            <div className={`sfxrow${vfxDraft.effect === "none" ? " is-on" : ""}`}>
+              <button
+                type="button" className="sfxrow__name"
+                onClick={() => setVfxDraft((d) => ({ ...d, effect: "none" }))}
+              >None</button>
+            </div>
+            {VOICE_FX.map((e) => {
+              const isOn = vfxDraft.effect === e.id;
+              return (
+                <div key={e.id} className={`sfxrow${isOn ? " is-on" : ""}`}>
+                  <button
+                    type="button" className="sfxrow__name"
+                    onClick={() => setVfxDraft((d) => ({ ...d, effect: d.effect === e.id ? "none" : e.id }))}
+                  >{e.label}</button>
+                </div>
+              );
+            })}
+          </div>
+          {vfxDraft.effect !== "none" && (
+            <>
+              <div className="mini-h" style={{ marginTop: 12 }}>
+                {(VOICE_FX.find((e) => e.id === vfxDraft.effect) || {}).desc}
+              </div>
+              <label className="trdur" style={{ marginTop: 8 }}>
+                <span>Strength</span>
+                <input
+                  type="range" min={0} max={100} step={1}
+                  value={vfxDraft.strength}
+                  onChange={(e) => setVfxDraft((d) => ({ ...d, strength: +e.target.value }))}
+                />
+                <span className="trdur__val">{vfxDraft.strength}%</span>
+              </label>
+            </>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button
+              type="button" className="mbtn mbtn--primary" style={{ flex: 1 }}
+              onClick={() => setVoiceFx && setVoiceFx(
+                vfxDraft.effect === "none" ? null : sanitizeVoiceFx(vfxDraft)
+              )}
+            >Apply</button>
+            <button
+              type="button" className="mbtn"
+              onClick={() => setVfxDraft({
+                effect: voiceFx ? voiceFx.effect : "none",
+                strength: voiceFx ? voiceFx.strength : 50,
+              })}
+            >Cancel</button>
+          </div>
         </div>
 
         <div className="panel video-overlay">

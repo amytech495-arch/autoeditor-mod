@@ -178,6 +178,70 @@ describe("sound effects (FX lane)", () => {
   });
 });
 
+describe("voice over effect", () => {
+  it("applies a bass chain to the voiceover in concat mode via -af", () => {
+    const p = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"], voiceFx: { effect: "bass", strength: 50 } },
+      io
+    );
+    expect(p.mode).toBe("concat");
+    const s = p.args.join(" ");
+    expect(s).toContain("-af");
+    expect(s).toContain("bass=g=6.00:f=110");
+  });
+
+  it("replaces the voiceover input with an effect label in the graph mix", () => {
+    const sfxClips = [{ id: "s1", path: "whoosh.mp3", at: 2, volume: 0.5 }];
+    const p = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"], voiceFx: { effect: "bass", strength: 50 } },
+      { ...io, sfxClips }
+    );
+    expect(p.mode).toBe("graph");
+    const fc = filterText(p);
+    // 3 clip inputs, so the voiceover is input 3 → chain to [vfx], then the mix
+    expect(fc).toContain("[3:a]bass=g=6.00:f=110[vfx]");
+    expect(fc).toContain("[vfx][sfx0]amix=inputs=2");
+  });
+
+  it("bakes the effect into the segmented join's audio filter graph", () => {
+    const N = 130, D = 2, TD = 0.4;
+    const many = Array.from({ length: N }, (_, k) => ({ name: "c" + k, start: +(k * (D - TD)).toFixed(3), duration: D, gap: false }));
+    const paths = Array.from({ length: N }, (_, k) => "img" + k + ".png");
+    const trans = many.map((_, k) => (k === 0 ? "cut" : "fade"));
+    const p = buildRenderPlan(
+      { ...base, clips: many, transitions: trans, transitionDuration: TD, voiceFx: { effect: "radio", strength: 100 } },
+      { paths, audioName: "audio.mp3", capChain: "" }
+    );
+    expect(p.mode).toBe("segmented");
+    const join = p.passes[p.passes.length - 1];
+    const afc = join.filterFiles.find((f) => f.name === "fc_audio.txt");
+    // input 1 = the narration → chain to [vfx]; radio at 100 → top edge at 3200 Hz
+    expect(afc.text).toContain("[1:a]highpass=f=300,lowpass=f=3200[vfx]");
+  });
+
+  it("compression maps strength to acompressor threshold and ratio", () => {
+    const p = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"], voiceFx: { effect: "compress", strength: 100 } },
+      io
+    );
+    const s = p.args.join(" ");
+    expect(s).toContain("acompressor=threshold=-24.0:ratio=8.00");
+  });
+
+  it("strength 0 and unknown effects add no filter", () => {
+    const none = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"], voiceFx: { effect: "clarity", strength: 0 } },
+      io
+    );
+    expect(none.args.join(" ")).not.toContain("-af");
+    const bogus = buildRenderPlan(
+      { ...base, clips, transitions: ["cut", "cut", "cut"], voiceFx: { effect: "bogus", strength: 50 } },
+      io
+    );
+    expect(bogus.args.join(" ")).not.toContain("equalizer");
+  });
+});
+
 describe("image overlay (watermark)", () => {
   it("forces the graph path and burns the watermark on top of everything", () => {
     const p = buildRenderPlan(

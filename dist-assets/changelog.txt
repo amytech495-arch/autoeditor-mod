@@ -1,3 +1,18 @@
+Version 1.6
+=========
+NEW — Voice Over Effect
+  A new Voice Over Effect panel (right below Background Music) enhances the
+  narration before it is exported. Pick one of four effects and dial in a
+  strength:
+    Bass Boost    — fuller low end around 110 Hz
+    Clarity       — brighter speech around 3 kHz for a crisper read
+    Compression   — smooths uneven levels so loud and quiet lines sit closer
+    Radio Effect  — a retro telephone band for a lo-fi radio voice
+  Apply the effect and the preview plays it live; Cancel restores the last
+  applied setting. The effect is stored with the project (and in Save Config
+  presets) and bakes into both the FFmpeg and the browser (WebCodecs) exports.
+
+
 Version 1.5
 =========
 NEW — Save Config presets
