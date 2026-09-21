@@ -239,6 +239,8 @@ export default function Home() {
   const addTextOverlay = useCallback(() => setTextOverlays((p) => [...p, makeTextOverlay(crypto.randomUUID ? crypto.randomUUID() : `to-${Date.now()}`)]), []);
   const updateTextOverlay = useCallback((id, patch) => setTextOverlays((p) => p.map((o) => (o.id === id ? { ...o, ...patch } : o))), []);
   const removeTextOverlay = useCallback((id) => setTextOverlays((p) => p.filter((o) => o.id !== id)), []);
+  // Replace the whole overlay list at once (used when a saved config preset is applied).
+  const replaceTextOverlays = useCallback((list) => setTextOverlays(list), []);
 
   const onWatermark = useCallback(async (files) => {
     const file = files[0];
@@ -1442,6 +1444,7 @@ export default function Home() {
           addTextOverlay={addTextOverlay}
           updateTextOverlay={updateTextOverlay}
           removeTextOverlay={removeTextOverlay}
+          replaceTextOverlays={replaceTextOverlays}
           onWatermark={onWatermark}
         />
       )}

@@ -1,3 +1,28 @@
+Version 1.5
+=========
+NEW — Save Config presets
+  A new Save Config panel right after Export saves the whole look of a
+  project as a named preset: export settings (aspect, fps, quality),
+  transitions, motion / advanced motion, image effects, scene fades, video
+  overlay, image overlay, and text overlays. Type a name and hit Save, then
+  re-apply any saved preset in one click or delete it. Presets are kept in
+  the browser's storage, so they carry over between projects on the same
+  machine. (Overlay video/image files aren't stored — only their settings —
+  so re-add the file after applying.)
+
+NEW — Back-to-top button
+  A sticky "↑ Back to top" button now sits at the bottom of the side panel
+  (after Text overlays) and scrolls the panel back up to the Export settings.
+
+CHANGED — Everything ships as Version 1.5
+  The release is now ONE zip (AutoEditorModv1.5.zip) for every desktop — it
+  bundles the pre-built app plus four "1 Run-*" launchers, so you pick the one
+  for your machine: Windows, macOS (Intel or Apple Silicon), or Linux. Android
+  (Termux) continues to ship as its own tiny AutoEditorModv1.5-Android.zip.
+  Pushing a version tag such as "v1.5" builds both in CI and publishes them to
+  the release page automatically.
+
+
 Version 1.4
 =========
 NEW — Sound effects

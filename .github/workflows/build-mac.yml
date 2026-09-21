@@ -1,10 +1,10 @@
 name: Build macOS app
 
-# Run manually from the repo's Actions tab (or on a version tag).
+# Manual-only convenience build (tag pushes are handled by build-desktop.yml,
+# which builds all platforms and publishes the release). Run from the repo's
+# Actions tab to produce the Apple Silicon (arm64) macOS zip as an artifact.
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
 
 jobs:
   build:
@@ -35,6 +35,6 @@ jobs:
       - name: Upload zip
         uses: actions/upload-artifact@v4
         with:
-          name: AutoEditorModv1.3-macOS-${{ matrix.arch }}
-          path: dist/AutoEditorModv1.3-macOS-*.zip
+          name: AutoEditorModv1.5-macOS-${{ matrix.arch }}
+          path: dist/AutoEditorModv1.5-macOS-*.zip
           if-no-files-found: error
