@@ -16,7 +16,12 @@ Turn timestamp-named images plus a voiceover into an MP4 — entirely on your ow
 - **Editing** — drag-and-drop image import, per-clip trim, fit mode (cover / contain), drag-reorder in the timeline.
 - **Transitions** — fade, wipe, zoom, slide with adjustable duration.
 - **Audio** — multiple audio layers, per-layer volume, automatic voice/music sync.
+- **Sound Effects** — six built-in sounds (Whoosh, Boom, Correct, Click, Shutter, Subtle) plus your own .mp3/.wav uploads; drop markers on the FX track, drag to move, set each marker's volume, and fade the whole effects bed with a master volume.
+- **Background Music** — a dedicated BG track for music beds: add an audio layer, click the BG track to place it, drag clips to move them, trim either edge, and set per-clip volume with fade in/out.
+- **Timed Text Overlays** — unlimited titles, labels, or call-outs anywhere on the frame, each with its own text, start/end time, position, size, color, and opacity.
 - **Text** — subtitle overlay from SRT/SSA or timestamped transcripts, with style, size, and entrance-animation controls.
+- **Random Mix & Favorites** — in the Motion and Image Effects panels, flip Random mix to pick from any effect set (like the transitions panel) or star the ones you like.
+- **Save Config Presets** — save the whole look of a project — export settings (aspect, fps, quality), transitions, motion, image effects, scene fades, overlays, and text overlays — as a named preset and re-apply it in one click.
 - **Overlays & Watermark** — video/image overlay with opacity and blend modes; optional persistent watermark.
 - **Export** — full resolution, 720p, or **4K UHD**; 24/30/60 fps; WebCodecs (browser-native) and FFmpeg rendering with a real-time progress bar.
 - **Project** — save and resume full project state as a JSON file.
