@@ -15,8 +15,8 @@ NEW — Back-to-top button
   (after Text overlays) and scrolls the panel back up to the Export settings.
 
 CHANGED — Everything ships as Version 1.5
-  The release is now ONE zip (AutoEditorModv1.5.zip) for every desktop — it
-  bundles the pre-built app plus four "1 Run-*" launchers, so you pick the one
+  The release is now ONE zip (AutoEditorModv1.5-Linux-macOS-Windows.zip) for
+  every desktop — it bundles the pre-built app plus four "1 Run-*" launchers, so you pick the one
   for your machine: Windows, macOS (Intel or Apple Silicon), or Linux. Android
   (Termux) continues to ship as its own tiny AutoEditorModv1.5-Android.zip.
   Pushing a version tag such as "v1.5" builds both in CI and publishes them to

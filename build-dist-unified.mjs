@@ -111,7 +111,7 @@ async function main() {
 
   console.log("[4/4] Zipping...");
   mkdirSync(DIST, { recursive: true }); // keep dist/ — only overwrite our own zip
-  const zip = path.join(DIST, `AutoEditorModv${VERSION}.zip`);
+  const zip = path.join(DIST, `AutoEditorModv${VERSION}-Linux-macOS-Windows.zip`);
   rmSync(zip, { force: true });
   if (process.platform === "win32") {
     execSync(
