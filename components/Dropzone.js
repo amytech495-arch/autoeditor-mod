@@ -72,7 +72,15 @@ export default function Dropzone({
     <button
       type="button"
       className={cls.join(" ")}
-      onClick={() => inputRef.current && inputRef.current.click()}
+      onClick={(e) => {
+        // The hidden file input lives INSIDE this button, so the picker's
+        // programmatic click() bubbles back up and re-fires this handler,
+        // opening a second dialog — re-picking there duplicates the file on
+        // the timeline. Ignore only that bubbled click (the input itself);
+        // clicks on the button or its label text must still open the picker.
+        if (e.target === inputRef.current) return;
+        inputRef.current && inputRef.current.click();
+      }}
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={onDrop}

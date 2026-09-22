@@ -393,12 +393,23 @@ export default function Home() {
       importNoteTimerRef.current = setTimeout(() => setImportNote(null), 6000);
     }
     if (!files.length) return;
+    // Guard against the same file arriving twice (a double file-picker, or a
+    // folder drop that lists a file twice): one identical file = one timeline
+    // entry. Files without a parseable timestamp would otherwise each get their
+    // own slot and show up as duplicates.
+    const seen = new Set();
+    const unique = files.filter((f) => {
+      const key = `${f.name}:${f.size}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     // Decoding many files (esp. video posters) takes a few seconds with no UI —
     // show live "loaded X of N" progress, ticking up as each file finishes.
-    setImporting({ done: 0, total: files.length });
+    setImporting({ done: 0, total: unique.length });
     try {
       const loaded = await Promise.all(
-        files.map(async (f) => {
+        unique.map(async (f) => {
           const img = f.type.startsWith("video/") ? await loadVideoEl(f) : await loadImageEl(f);
           setImporting((p) => (p ? { ...p, done: p.done + 1 } : p));
           return { file: f, seconds: parseTimestampName(f.name), img };
