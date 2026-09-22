@@ -12,6 +12,12 @@ NEW — Voice Over Effect
   applied setting. The effect is stored with the project (and in Save Config
   presets) and bakes into both the FFmpeg and the browser (WebCodecs) exports.
 
+NEW — Save Config presets keep your logo
+  A saved preset now embeds the watermark logo itself, so applying a preset on
+  a fresh project brings the logo back in the same click — no need to remove
+  and re-add it. (Large overlay/video texture files are still too big for
+  browser storage and must be re-added.)
+
 
 Version 1.5
 =========

@@ -42,6 +42,40 @@ function loadPresets() {
   } catch { return []; }
 }
 
+// Downscale + PNG-encode an image URL into a small data URL so a preset can
+// carry the logo itself (localStorage is capped, so keep it compact — a logo
+// needs to stay crisp, but a 256px PNG is plenty at typical sizes). Returns
+// null when the image fails to load or is too big to store.
+const WATERMARK_MAX_PX = 256;
+const WATERMARK_MAX_CHARS = 400000; // ~300 KB raw before base64
+function encodeImageDataUrl(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, WATERMARK_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        const data = c.toDataURL("image/png");
+        resolve(data.length <= WATERMARK_MAX_CHARS ? data : null);
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+// Reverse: turn a stored data URL back into a real File so both the browser and
+// server (upload) render paths can use the restored logo. Returns null on failure.
+function dataUrlToFile(dataUrl, fallbackName) {
+  return fetch(dataUrl)
+    .then((r) => r.blob())
+    .then((blob) => new File([blob], fallbackName || "preset-logo.png", { type: blob.type || "image/png" }))
+    .catch(() => null);
+}
+
 // Fade envelope for a BG clip at time t (seconds) within the clip, 0..duration.
 function fadeGain(t, clip) {
   const dur = clip.duration || 0;
@@ -202,10 +236,11 @@ export default function Editor({
     presetMsgTimer.current = setTimeout(() => setPresetMsg(null), 4500);
   }, []);
 
-  // Snapshot the current look into a preset. Media files (overlay video/image)
-  // are session-only blob URLs, so the file itself isn't stored — its settings
-  // are; the user re-adds the file after applying.
-  const savePreset = useCallback(() => {
+  // Snapshot the current look into a preset. Video/texture overlay files stay
+  // session-only blob URLs (too big for localStorage), but the watermark logo is
+  // small, so we embed a compact PNG of it — applying the preset then restores
+  // the logo automatically.
+  const savePreset = useCallback(async () => {
     const name = presetName.trim();
     if (!name) { flashPresetMsg("Give the preset a name first."); return; }
     const config = {
@@ -222,6 +257,10 @@ export default function Editor({
         text: o.text, start: o.start, end: o.end, x: o.x, y: o.y, size: o.size, opacity: o.opacity, color: o.color,
       })),
     };
+    if (watermarkEnabled && watermarkUrl) {
+      const data = await encodeImageDataUrl(watermarkUrl);
+      if (data) config.watermarkData = data;
+    }
     const entry = {
       id: crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}`,
       name,
@@ -234,11 +273,12 @@ export default function Editor({
   }, [presetName, presets, persistPresets, flashPresetMsg, aspect, fps, renderQuality,
       transitionDuration, transitionsByName, motionAmount, motionByName, fxAmount, fxByName,
       fadeIn, fadeOut, overlayEnabled, overlayOpacity, overlayBlendMode, overlayLoop,
-      watermarkEnabled, watermarkSize, watermarkX, watermarkY, watermarkOpacity, voiceFx, textOverlays]);
+      watermarkEnabled, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, voiceFx, textOverlays]);
 
   // Re-apply a saved preset to the current project. Per-clip transitions / motion /
   // effects are matched by clip name, so they only land on clips with the same names.
-  const applyPreset = useCallback((p) => {
+  const gotLogo = (c) => typeof c.watermarkData === "string" && c.watermarkData.startsWith("data:image/");
+  const applyPreset = useCallback(async (p) => {
     const c = (p && p.config) || {};
     if (c.aspect != null && setAspect) setAspect(c.aspect);
     if (c.fps != null && setFps) setFps(c.fps);
@@ -260,6 +300,16 @@ export default function Editor({
     if (c.watermarkX != null && setWatermarkX) setWatermarkX(c.watermarkX);
     if (c.watermarkY != null && setWatermarkY) setWatermarkY(c.watermarkY);
     if (c.watermarkOpacity != null && setWatermarkOpacity) setWatermarkOpacity(c.watermarkOpacity);
+    // Restore the embedded logo itself so the preset brings back the overlay in
+    // one click — no re-adding (rebuilt as a File so the server upload works too).
+    if (gotLogo(c) && setWatermarkFile && setWatermarkUrl) {
+      const file = await dataUrlToFile(c.watermarkData, "preset-logo.png");
+      if (file) {
+        setWatermarkFile(file);
+        setWatermarkUrl(c.watermarkData);
+        setWatermarkEnabled(true);
+      }
+    }
     if (c.voiceFx != null && setVoiceFx) setVoiceFx(sanitizeVoiceFx(c.voiceFx));
     if (c.textOverlays && Array.isArray(c.textOverlays) && replaceTextOverlays) {
       replaceTextOverlays(c.textOverlays.map((o, i) => ({
@@ -267,10 +317,14 @@ export default function Editor({
         id: crypto.randomUUID ? crypto.randomUUID() : `to-${Date.now()}-${i}`,
       })));
     }
-    flashPresetMsg(`Applied preset “${p.name}”. Overlay files (if any) need re-adding.`);
+    flashPresetMsg(
+      gotLogo(c) || !(c.overlayEnabled || c.watermarkEnabled)
+        ? `Applied preset “${p.name}”.`
+        : `Applied preset “${p.name}”. Overlay video files (if any) need re-adding.`
+    );
   }, [setTransition, setMotion, setFx, setFadeIn, setFadeOut, setOverlayEnabled, setOverlayOpacity,
       setOverlayBlendMode, setOverlayLoop, setWatermarkEnabled, setWatermarkSize, setWatermarkX,
-      setWatermarkY, setWatermarkOpacity, replaceTextOverlays, flashPresetMsg]);
+      setWatermarkY, setWatermarkOpacity, setWatermarkFile, setWatermarkUrl, replaceTextOverlays, flashPresetMsg]);
 
   const deletePreset = useCallback((id) => {
     const gone = presets.find((p) => p.id === id);
