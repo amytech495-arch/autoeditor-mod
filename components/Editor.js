@@ -236,10 +236,10 @@ export default function Editor({
     presetMsgTimer.current = setTimeout(() => setPresetMsg(null), 4500);
   }, []);
 
-  // Snapshot the current look into a preset. Video/texture overlay files stay
-  // session-only blob URLs (too big for localStorage), but the watermark logo is
-  // small, so we embed a compact PNG of it — applying the preset then restores
-  // the logo automatically.
+  // Snapshot the current look into a preset. Video overlay FILES stay session-only
+  // blob URLs (too big for localStorage), but both overlay panels — the texture
+  // layer and the watermark logo — get their image embedded as a compact PNG, so
+  // applying the preset restores them without re-adding.
   const savePreset = useCallback(async () => {
     const name = presetName.trim();
     if (!name) { flashPresetMsg("Give the preset a name first."); return; }
@@ -261,6 +261,13 @@ export default function Editor({
       const data = await encodeImageDataUrl(watermarkUrl);
       if (data) config.watermarkData = data;
     }
+    // Overlay textures toothe video-overlay panel can hold an image (a logo/light
+    // leak/grain still) — embed that too when it is one. Actual video files fail to
+    // decode as an image and are simply left for manual re-adding.
+    if (overlayEnabled && overlayUrl) {
+      const data = await encodeImageDataUrl(overlayUrl);
+      if (data) config.overlayData = data;
+    }
     const entry = {
       id: crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}`,
       name,
@@ -272,12 +279,13 @@ export default function Editor({
     flashPresetMsg(`Saved preset “${name}”.`);
   }, [presetName, presets, persistPresets, flashPresetMsg, aspect, fps, renderQuality,
       transitionDuration, transitionsByName, motionAmount, motionByName, fxAmount, fxByName,
-      fadeIn, fadeOut, overlayEnabled, overlayOpacity, overlayBlendMode, overlayLoop,
+      fadeIn, fadeOut, overlayEnabled, overlayUrl, overlayOpacity, overlayBlendMode, overlayLoop,
       watermarkEnabled, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, voiceFx, textOverlays]);
 
   // Re-apply a saved preset to the current project. Per-clip transitions / motion /
   // effects are matched by clip name, so they only land on clips with the same names.
   const gotLogo = (c) => typeof c.watermarkData === "string" && c.watermarkData.startsWith("data:image/");
+  const gotOverlay = (c) => typeof c.overlayData === "string" && c.overlayData.startsWith("data:image/");
   const applyPreset = useCallback(async (p) => {
     const c = (p && p.config) || {};
     if (c.aspect != null && setAspect) setAspect(c.aspect);
@@ -310,6 +318,15 @@ export default function Editor({
         setWatermarkEnabled(true);
       }
     }
+    // Same for the video-overlay panel when it held an image (logo/texture still).
+    if (gotOverlay(c) && setOverlayFile && setOverlayUrl) {
+      const file = await dataUrlToFile(c.overlayData, "preset-overlay.png");
+      if (file) {
+        setOverlayFile(file);
+        setOverlayUrl(c.overlayData);
+        setOverlayEnabled(true);
+      }
+    }
     if (c.voiceFx != null && setVoiceFx) setVoiceFx(sanitizeVoiceFx(c.voiceFx));
     if (c.textOverlays && Array.isArray(c.textOverlays) && replaceTextOverlays) {
       replaceTextOverlays(c.textOverlays.map((o, i) => ({
@@ -317,13 +334,13 @@ export default function Editor({
         id: crypto.randomUUID ? crypto.randomUUID() : `to-${Date.now()}-${i}`,
       })));
     }
+    const overlayWaiting = (c.overlayEnabled && !gotOverlay(c)) || (c.watermarkEnabled && !gotLogo(c));
     flashPresetMsg(
-      gotLogo(c) || !(c.overlayEnabled || c.watermarkEnabled)
-        ? `Applied preset “${p.name}”.`
-        : `Applied preset “${p.name}”. Overlay video files (if any) need re-adding.`
+      overlayWaiting ? `Applied preset “${p.name}”. Overlay files (if any) need re-adding.` : `Applied preset “${p.name}”.`
     );
   }, [setTransition, setMotion, setFx, setFadeIn, setFadeOut, setOverlayEnabled, setOverlayOpacity,
-      setOverlayBlendMode, setOverlayLoop, setWatermarkEnabled, setWatermarkSize, setWatermarkX,
+      setOverlayBlendMode, setOverlayLoop, setOverlayFile, setOverlayUrl,
+      setWatermarkEnabled, setWatermarkSize, setWatermarkX,
       setWatermarkY, setWatermarkOpacity, setWatermarkFile, setWatermarkUrl, replaceTextOverlays, flashPresetMsg]);
 
   const deletePreset = useCallback((id) => {
