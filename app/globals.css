@@ -306,7 +306,14 @@ body {
 }
 .play:hover { filter: brightness(1.06); }
 .play:active { transform: scale(.94); }
-.time__now { color: var(--amber); font-weight: 600; font-variant-numeric: tabular-nums; }
+.time__now {
+  font: inherit; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: var(--amber); background: transparent; border: none; padding: 2px 4px;
+  cursor: text; border-radius: 6px;
+}
+.time__now:hover { background: rgba(231,232,236,.08); }
+.time__now:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.time__now--edit { width: 7ch; box-sizing: border-box; background: var(--panel-2); border: 1px solid var(--line); }
 .time__total { color: var(--muted); font-variant-numeric: tabular-nums; }
 .transport__end { flex: 1; display: flex; align-items: center; gap: 14px; min-width: 0; }
 .transport__end--right { justify-content: flex-end; flex-wrap: wrap; }
@@ -537,7 +544,7 @@ body {
 }
 .bgclip:active { cursor: grabbing; }
 .bgclip:hover { border-color: var(--accent); }
-.bgclip .wave rect { fill: #9db4ff; opacity: .85; }
+.bgclip .wave path { fill: #9db4ff; opacity: .85; }
 .bgclip__handle {
   position: absolute; top: 0; bottom: 0; width: 10px; z-index: 3;
   cursor: ew-resize; opacity: 0; transition: opacity .1s;
@@ -641,7 +648,7 @@ body {
 .note--gap b { color: var(--accent); }
 
 .wave { position: absolute; inset: 0; width: 100%; height: 100%; }
-.wave rect { fill: #9db4ff; opacity: .85; }
+.wave path { fill: #9db4ff; opacity: .85; }
 .wave--empty { position: absolute; inset: 0; background: rgba(231,232,236,.06); }
 
 .tl__playhead {
@@ -718,16 +725,6 @@ body {
 .trchip:disabled:hover { border-color: var(--line); }
 .trchip__icon { font-size: 12px; color: var(--muted); }
 .trchip.is-on .trchip__icon { color: var(--accent); }
-.trchip-wrap { position: relative; display: inline-flex; }
-.trchip-star {
-  position: absolute; top: -7px; right: -7px; z-index: 1;
-  width: 17px; height: 17px; display: grid; place-items: center;
-  padding: 0; font-size: 10px; line-height: 1; color: var(--faint);
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: 50%;
-  cursor: pointer; transition: color .12s, border-color .12s;
-}
-.trchip-star:hover { color: #ffcf4a; border-color: #ffcf4a; }
-.trchip-star.is-fav { color: #ffcf4a; border-color: rgba(255,207,74,.55); }
 .mini-h { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
 .trdur { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); margin-top: 12px; }
 .trdur > span:first-child { min-width: 58px; }
@@ -742,7 +739,6 @@ body {
 .trall:hover { border-color: var(--accent); }
 .trall:disabled { opacity: .5; cursor: default; }
 .trall:disabled:hover { border-color: var(--line); }
-.trall--fav { margin-top: 8px; }
 
 /* Transitions panel title row: heading + the Random-mix toggle. */
 .transitions__titlerow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -1288,3 +1284,130 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 .unsupported__p:last-child { margin-bottom: 0; }
 .unsupported__p b { color: var(--text); font-weight: 700; }
 .unsupported__brand { color: var(--text); font-weight: 700; }
+
+/* ---------- Right-side tool panel tablist (Clipchamp-style) ---------- */
+.side__tabs {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+  position: sticky; top: 0; z-index: 6;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 5px;
+}
+.side__tab {
+  min-width: 0; padding: 7px 2px 6px; border: none; background: transparent;
+  border-radius: 9px; cursor: pointer; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; font-size: 10.5px; color: var(--faint);
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px;
+}
+.side__tab:hover { color: var(--muted); }
+.side__tab.is-on { background: var(--panel-2); color: var(--text); }
+.side__tab-ic { font-size: 15px; line-height: 1; }
+.side__group { display: flex; flex-direction: column; gap: 12px; }
+.side__group.is-off { display: none; }
+
+/* ---------- Timeline hover time indicator ---------- */
+.tl__hoverline {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: rgba(255,255,255,.35); pointer-events: none; z-index: 25;
+}
+.tl__hoverlabel {
+  position: absolute; top: -27px; transform: translateX(-50%);
+  background: #222228; color: #fff; font-size: 10.5px; font-weight: 600;
+  padding: 2px 7px; border-radius: 7px; border: 1px solid var(--line);
+  white-space: nowrap; pointer-events: none; z-index: 26;
+  box-shadow: 0 3px 10px rgba(0,0,0,.4);
+}
+/* One-shot time chip that pops on a timeline click (Clipchamp-style). */
+.tl__poplabel {
+  position: absolute; top: -27px; transform: translateX(-50%) scale(.5);
+  background: var(--accent); color: #15161a; font-size: 11px; font-weight: 700;
+  padding: 3px 9px; border-radius: 8px; white-space: nowrap;
+  pointer-events: none; z-index: 27; box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  animation: tl-pop .42s cubic-bezier(.22,.9,.3,1.35) both;
+}
+@keyframes tl-pop {
+  0% { opacity: 0; transform: translateX(-50%) scale(.4); }
+  40% { opacity: 1; transform: translateX(-50%) scale(1.22); }
+  60% { transform: translateX(-50%) scale(.98); }
+  72% { opacity: 1; transform: translateX(-50%) scale(1.06); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1); }
+}
+
+/* ---------- Clipchamp-style hover tooltip (global TooltipLayer) ---------- */
+.tip {
+  position: fixed; z-index: 10000; display: flex; align-items: center; gap: 6px;
+  max-width: min(320px, calc(100vw - 16px));
+  background: #26262c; color: #fff; font-size: 12px; font-weight: 500;
+  line-height: 1; padding: 7px 9px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.1);
+  box-shadow: 0 6px 22px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.25);
+  pointer-events: none; transition: opacity .09s, transform .09s;
+  animation: tipin .1s ease-out both; text-align: center;
+}
+.tip__text { color: var(--text); line-height: 1.25; }
+.tip__kbd {
+  flex: none; font: inherit; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: #d8d8de; background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.16); border-bottom-width: 2px;
+  padding: 1px 5px; border-radius: 5px; white-space: nowrap;
+}
+@keyframes tipin { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ---------- Quick tour ---------- */
+.tourbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 12px; cursor: pointer;
+}
+.tourbtn:hover { border-color: var(--accent); }
+.tourbtn__ic {
+  width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--amber); color: #16161a; font-size: 12px; font-weight: 800; line-height: 1;
+}
+.tour {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(10,11,14,.62);
+}
+.tour__ring {
+  position: fixed; border-radius: 18px; z-index: 9001;
+  border: 2px solid var(--amber); box-shadow: 0 0 0 4px rgba(255,196,87,.22), 0 0 30px rgba(255,196,87,.25);
+  pointer-events: none; animation: tourpulse 1.6s ease-in-out infinite;
+}
+@keyframes tourpulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(255,196,87,.20), 0 0 24px rgba(255,196,87,.18); }
+  50% { box-shadow: 0 0 0 7px rgba(255,196,87,.32), 0 0 42px rgba(255,196,87,.38); }
+}
+.tour__card {
+  position: fixed; width: min(320px, calc(100vw - 24px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.5); z-index: 9002;
+}
+.tour__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tour__title { font-size: 13px; font-weight: 700; letter-spacing: .3px; }
+.tour__count { margin-left: auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tour__x {
+  border: none; background: transparent; color: var(--faint); font-size: 13px;
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; cursor: pointer;
+}
+.tour__x:hover { background: var(--panel-2); color: var(--text); }
+.tour__text { font-size: 13.5px; line-height: 1.55; color: var(--text); margin: 0 0 14px; }
+.tour__foot { display: flex; align-items: center; gap: 8px; }
+.tour__skip { border: none; background: transparent; color: var(--faint); font-size: 12px; cursor: pointer; padding: 6px 4px; }
+.tour__skip:hover { color: var(--muted); }
+.tour__dots { display: flex; gap: 5px; margin-left: auto; }
+.tour__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.tour__dot.is-on { background: var(--amber); }
+.tour__prev, .tour__next {
+  font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+  padding: 7px 12px;
+}
+.tour__prev:hover, .tour__next:hover { border-color: var(--accent); }
+.tour__next { background: var(--amber); border-color: transparent; color: #16161a; }
+.tour__next:hover { filter: brightness(1.06); }
+
+/* ---------- Fullscreen preview ---------- */
+.viewer:fullscreen {
+  width: 100vw; height: 100vh; max-width: none; max-height: none;
+  background: #000; border: none; border-radius: 0; padding: 0 12px 4px;
+}
+.viewer:fullscreen .viewer__frame { border-radius: 0; }

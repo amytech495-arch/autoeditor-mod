@@ -6,13 +6,14 @@ import { buildTimeline, trimClips, LEAD_IN } from "../lib/timeline";
 import { computeVoiceOnsets, syncClipsToVoiceover, alignedClipCount } from "../lib/syncAudio";
 import { resolveDimensions, capTo720, upTo4K } from "../lib/dimensions";
 import { getAudioDuration, getMediaDuration } from "../lib/audio";
-import { getWaveformPeaks } from "../lib/waveform";
+import { getWaveformPeaks, waveBucketCount } from "../lib/waveform";
 import { renderVideo, cancelRender, getActiveRender, reconnectRender, probeBackend } from "../lib/serverRender";
 import { renderWebCodecs, webCodecsCanRender, pickRenderProfile, startKeepAwake, crfTargetBitrate } from "../lib/webcodecsRender";
 import { DEFAULT_TRANSITION_DURATION, mixTransitions } from "../lib/transitions";
 import { parseTranscript } from "../lib/captions";
 import { makeTextOverlay, drawTextOverlays, textOverlayFontPx } from "../lib/textOverlay";
 import { sanitizeVoiceFx } from "../lib/voiceFx";
+import QuickTour from "../components/QuickTour";
 
 import Dropzone from "../components/Dropzone";
 import Editor from "../components/Editor";
@@ -263,7 +264,7 @@ export default function Home() {
     setError(null);
     try {
       const d = await getAudioDuration(file);
-      const peaks = await getWaveformPeaks(file, 1000);
+      const peaks = await getWaveformPeaks(file, waveBucketCount(d));
       setSelectedBg({ name: file.name, file, url: URL.createObjectURL(file), duration: d, peaks });
     } catch (e) { setError(e.message); }
   }, []);
@@ -725,6 +726,22 @@ export default function Home() {
   const ready = audioFile && clips.length > 0;
   const showEditor = built && ready;
 
+  // --- Quick tour: auto-open on the first visit to the editor, plus a manual
+  // "Quick tour" button in the top bar to replay it.
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourAutoRef = useRef(false);
+  const closeTour = useCallback(() => {
+    try { localStorage.setItem("ae.tour.seen", "1"); } catch (_) {}
+    setTourOpen(false);
+  }, []);
+  useEffect(() => {
+    if (!showEditor || tourAutoRef.current) return;
+    tourAutoRef.current = true;
+    let seen = false;
+    try { seen = !!localStorage.getItem("ae.tour.seen"); } catch (_) {}
+    if (!seen) setTourOpen(true);
+  }, [showEditor]);
+
   // --- Projects: client-side persistence (IndexedDB) ------------------------
   // On launch, ask for durable storage and load the saved projects list.
   useEffect(() => {
@@ -886,7 +903,7 @@ export default function Home() {
       if (audio) {
         setAudioFile(audio.file); setAudioUrl(URL.createObjectURL(audio.file));
         setAudioDuration(audio.dur);
-        getWaveformPeaks(audio.file, 1000).then(setPeaks).catch(() => {});
+        getWaveformPeaks(audio.file, waveBucketCount(audio.dur)).then(setPeaks).catch(() => {});
       }
       // Background-music clips (migrate any legacy audio layers by flattening their clips).
       const bgMeta = d.bgClips || (d.audioLayers || []).flatMap((al) => al.clips || []);
@@ -896,7 +913,7 @@ export default function Home() {
         const file = new File([blob], c.name || `${c.id}.mp3`, { type: blob.type || "audio/mpeg" });
         const url = URL.createObjectURL(file);
         let dur = c.sourceDuration || 0; if (!dur) { try { dur = await getAudioDuration(file); } catch (_) {} }
-        const peaks = await getWaveformPeaks(file, 1000).catch(() => []);
+        const peaks = await getWaveformPeaks(file, waveBucketCount(dur)).catch(() => []);
         return {
           id: c.id, name: c.name || "audio", file, url, start: c.start ?? 0,
           sourceDuration: dur, offset: c.offset || 0,
@@ -1280,6 +1297,16 @@ export default function Home() {
           </button>
         </div>
         <div className="bar__io">
+          <button
+            type="button"
+            className="tourbtn"
+            onClick={() => setTourOpen(true)}
+            data-tip="Replay the quick tour"
+            aria-label="Quick tour"
+          >
+            <span className="tourbtn__ic" aria-hidden="true">?</span>
+            <span>Quick tour</span>
+          </button>
           <Dropzone
             compact accept="audio/*" onFiles={onAudio} icon="♪"
             title="Import voiceover" filled={!!audioFile}
@@ -1472,6 +1499,7 @@ export default function Home() {
       )}
       </div>
     </main>
+    <QuickTour open={tourOpen} onClose={closeTour} />
     </>
   );
 }

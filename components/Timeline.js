@@ -29,12 +29,24 @@ function slicePeaks(peaks, sourceDuration, offset, duration) {
 function Waveform({ peaks, style }) {
   if (!peaks || !peaks.length) return <div className="wave wave--empty" style={style} />;
   const n = peaks.length;
+  if (n === 1) {
+    return <div className="wave" style={style}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M0,4 L100,4 L100,96 L0,96 Z" /></svg></div>;
+  }
+  const step = 100 / (n - 1);
+  const amp = 46;
+  let d = `M0,${(50 - peaks[0] * amp).toFixed(2)}`;
+  for (let i = 1; i < n; i++) {
+    d += `L${(i * step).toFixed(2)},${(50 - peaks[i] * amp).toFixed(2)}`;
+  }
+  d += `L100,${(50 + peaks[n - 1] * amp).toFixed(2)}`;
+  for (let i = n - 2; i >= 0; i--) {
+    d += `L${(i * step).toFixed(2)},${(50 + peaks[i] * amp).toFixed(2)}`;
+  }
+  d += "Z";
   return (
-    <svg className="wave" viewBox={`0 0 ${n} 100`} preserveAspectRatio="none" aria-hidden="true" style={style}>
-      {peaks.map((p, i) => {
-        const h = Math.max(1.5, p * 92);
-        return <rect key={i} x={i + 0.12} y={(100 - h) / 2} width={0.76} height={h} rx={0.3} />;
-      })}
+    <svg className="wave" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style={style}
+      shapeRendering="geometricPrecision">
+      <path d={d} />
     </svg>
   );
 }
@@ -53,6 +65,29 @@ export default function Timeline({
 }) {
   const trackRef = useRef(null);
   const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
+  const [hover, setHover] = useState(null); // time under the mouse, for the hover indicator
+  const [pop, setPop] = useState(null); // one-shot time-chip pop on click, { t, id }
+  const popIdRef = useRef(0);
+
+  const onHoverMove = useCallback((e) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right) { setHover(null); return; }
+    setHover(((e.clientX - r.left) / r.width) * duration);
+  }, [duration]);
+  const onHoverLeave = useCallback(() => setHover(null), []);
+
+  // Capture-phase pointerdown: fires even when a child stops propagation
+  // (cut chips, clips, markers). Pops a short time chip at the click point.
+  const onPop = useCallback((e) => {
+    const el = trackRef.current;
+    if (!el || !duration) return;
+    const r = el.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right) return;
+    popIdRef.current += 1;
+    setPop({ t: ((e.clientX - r.left) / r.width) * duration, id: popIdRef.current });
+  }, [duration]);
 
   // Convert a pointer x over the track into a timeline time (used by the
   // hover "+" drop so an uploaded clip lands where the pointer is).
@@ -278,10 +313,10 @@ export default function Timeline({
   const trimmed = trimPos < duration;
 
   return (
-    <div className="tl" style={{ "--tl-min": `${rowMin}px`, "--tl-zoom": zoom }} ref={scrollRef}>
+    <div className="tl" style={{ "--tl-min": `${rowMin}px`, "--tl-zoom": zoom }} ref={scrollRef} onPointerMove={onHoverMove} onPointerLeave={onHoverLeave} onPointerDownCapture={onPop}>
       <div className="tl__row tl__row--ruler">
         <div className="tl__gutter" aria-hidden="true" />
-        <div className="tl__ruler tl__scrub" onPointerDown={onScrubDown} title="Drag to move the playhead">
+        <div className="tl__ruler tl__scrub" onPointerDown={onScrubDown} data-tip="Drag to move the playhead — or use ← / → to seek">
           {ticks.map((t) => (
             <span className="tl__tick" key={t} style={{ left: pctZoom(t) }}>
               <i className="tl__tickline" />
@@ -466,6 +501,24 @@ export default function Timeline({
           >
             <span className="tl__trim-grip" />
           </div>
+
+          {hover != null && (
+            <>
+              <div className="tl__hoverline" style={{ left: pctZoom(hover) }} aria-hidden="true" />
+              <span className="tl__hoverlabel" style={{ left: pctZoom(hover) }}>{label(hover)}</span>
+            </>
+          )}
+
+          {pop && (
+            <span
+              className="tl__poplabel"
+              key={pop.id}
+              style={{ left: pctZoom(pop.t) }}
+              onAnimationEnd={() => setPop(null)}
+            >
+              {label(pop.t)}
+            </span>
+          )}
         </div>
       </div>
     </div>

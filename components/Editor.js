@@ -24,6 +24,26 @@ function tc(t) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${d}`;
 }
 
+// Editable version of the current time, e.g. 1:23.5
+function toInputTime(t) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const m = Math.floor(t / 60);
+  const s = t - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, "0")}`;
+}
+
+// Accept "1:23", "1:23.5", "1:02:03", "83", "83.5" → seconds, or null if unparsable.
+function parseTime(str) {
+  const s = String(str).trim();
+  if (!s) return null;
+  if (/^\d+(\.\d+)?$/.test(s)) return +s;
+  const hm = s.match(/^(\d+):(\d{1,2})(?:\.(\d))?$/);
+  if (hm) return +hm[1] * 60 + +hm[2] + (hm[3] ? +hm[3] / 10 : 0);
+  const hms = s.match(/^(\d+):(\d{1,2}):(\d{1,2})(?:\.(\d))?$/);
+  if (hms) return +hms[1] * 3600 + +hms[2] * 60 + +hms[3] + (hms[4] ? +hms[4] / 10 : 0);
+  return null;
+}
+
 function clock(sec) {
   if (!isFinite(sec) || sec < 0) sec = 0;
   const m = Math.floor(sec / 60);
@@ -86,6 +106,15 @@ function fadeGain(t, clip) {
   return g;
 }
 
+// Right-side tool panel, organised as a Clipchamp-style tablist.
+const SIDE_TABS = [
+  { id: "effects", icon: "✦", label: "Effects" },
+  { id: "captions", icon: "💬", label: "Captions" },
+  { id: "audio", icon: "♪", label: "Audio" },
+  { id: "overlay", icon: "▤", label: "Overlay" },
+  { id: "export", icon: "⤓", label: "Export" },
+];
+
 export default function Editor({
   clips, imageEls, audioUrl, duration, peaks, dims,
   aspect, setAspect, fps, setFps,
@@ -131,6 +160,19 @@ export default function Editor({
   textOverlays = [], addTextOverlay, updateTextOverlay, removeTextOverlay, replaceTextOverlays,
 }) {
   const canvasRef = useRef(null);
+  const viewerRef = useRef(null);
+  const [fsOn, setFsOn] = useState(false);
+  const toggleFullscreen = useCallback(() => {
+    const el = viewerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (el.requestFullscreen) el.requestFullscreen({ navigationUI: "hide" });
+  }, []);
+  useEffect(() => {
+    const onFs = () => setFsOn(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
   const audioRef = useRef(null);
   // Voice-over effect live preview: the narration <audio> element is routed through
   // an AudioContext chain once the user applies an effect. vfxElSrc is created once
@@ -220,6 +262,7 @@ export default function Editor({
   // Save Config panel: saved look presets (export + transitions + motion + fx +
   // fades + overlays + text), persisted in localStorage.
   const sideRef = useRef(null); // the scrolling <aside> — target of "↑ Back to top"
+  const [sideTab, setSideTab] = useState("export");
   const presetMsgTimer = useRef(null);
   const [presets, setPresets] = useState(loadPresets);
   const [presetName, setPresetName] = useState("");
@@ -438,24 +481,6 @@ export default function Editor({
       return next;
     });
   }, []);
-
-  const useFavStore = (key) => {
-    const [favs, setFavs] = useState(() => {
-      try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch { return new Set(); }
-    });
-    const toggle = useCallback((id) => {
-      setFavs((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        try { localStorage.setItem(key, JSON.stringify([...next])); } catch { /* ignore */ }
-        return next;
-      });
-    }, [key]);
-    return [favs, toggle];
-  };
-  const [favTransitions, toggleFavTransition] = useFavStore("ae.fav.transitions");
-  const [favMotion, toggleFavMotion] = useFavStore("ae.fav.motion");
-  const [favFx, toggleFavFx] = useFavStore("ae.fav.fx");
 
   const [mixMotionMode, setMixMotionMode] = useState(false);
   const [mixMotionPicks, setMixMotionPicks] = useState(() => new Set());
@@ -878,6 +903,21 @@ export default function Editor({
     if (el) el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
   }, [seek, exportDuration, duration]);
 
+  // Editable "time now" box: click to type a target time, Enter/blur to seek.
+  const [timeDraft, setTimeDraft] = useState(null);
+  const startEditTime = useCallback(() => setTimeDraft(toInputTime(time)), [time]);
+  const commitEditTime = useCallback(() => {
+    if (timeDraft == null) return;
+    const t = parseTime(timeDraft);
+    if (t != null && isFinite(t)) seek(t);
+    setTimeDraft(null);
+  }, [timeDraft, seek]);
+  const cancelEditTime = useCallback(() => setTimeDraft(null), []);
+  const onTimeDraftKey = useCallback((e) => {
+    if (e.key === "Enter") commitEditTime();
+    else if (e.key === "Escape") cancelEditTime();
+  }, [commitEditTime, cancelEditTime]);
+
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -928,14 +968,21 @@ export default function Editor({
     const onKey = (e) => {
       const tag = (e.target.tagName || "").toLowerCase();
       if (tag === "input" || tag === "select" || tag === "textarea") return;
+      const meta = e.ctrlKey || e.metaKey || e.altKey;
       if (e.code === "Space") { e.preventDefault(); toggle(); }
+      else if (meta) { /* let the browser/undo handles handle it */ }
       else if (e.code === "ArrowRight") { e.preventDefault(); seek(time + (e.shiftKey ? 5 : 1)); }
       else if (e.code === "ArrowLeft") { e.preventDefault(); seek(time - (e.shiftKey ? 5 : 1)); }
       else if (e.key === "Home") { e.preventDefault(); seek(0); }
+      else if (e.key === "End") { e.preventDefault(); goToEnd(); }
+      else if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFullscreen(); }
+      else if (e.key === "+" || e.key === "=") { e.preventDefault(); setTimelineZoom(Math.min(4, timelineZoom + 0.5)); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); setTimelineZoom(Math.max(0.5, timelineZoom - 0.5)); }
+      else if (e.key === "0") { e.preventDefault(); setTimelineZoom(1); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, seek, time]);
+  }, [toggle, seek, time, goToEnd, toggleFullscreen, timelineZoom, setTimelineZoom]);
 
   const active = clips.find((c) => time >= c.start && time < c.start + c.duration) || clips[clips.length - 1];
   const badClips = useMemo(
@@ -976,25 +1023,59 @@ export default function Editor({
   return (
     <section className="editor">
       <div className="main">
-        <div className="viewer">
+        <div className="viewer" ref={viewerRef}>
           <div className="viewer__frame">
             <canvas ref={canvasRef} width={dims.width} height={dims.height} className="viewer__canvas" />
           </div>
 
           <div className="transport">
-            <div className="transport__end" />
+            <div className="transport__end">
+              {active && (
+                <div className="nowclip">
+                  <span className="nowclip__k">now</span>
+                  {active.gap ? "empty gap" : `image ${activeIndex} / ${imageCount}`}
+                </div>
+              )}
+            </div>
             <div className="transport__center">
-              <span className="time__now">{tc(time)}</span>
+              {timeDraft == null ? (
+                <button
+                  type="button"
+                  className="time__now"
+                  onClick={startEditTime}
+                  data-tip="Jump to a time — type m:ss, Enter to seek"
+                  aria-label={`Current time ${tc(time)}. Click to edit.`}
+                >
+                  {tc(time)}
+                </button>
+              ) : (
+                <input
+                  className="time__now time__now--edit"
+                  type="text"
+                  inputMode="numeric"
+                  value={timeDraft}
+                  autoFocus
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setTimeDraft(e.target.value)}
+                  onKeyDown={onTimeDraftKey}
+                  onBlur={commitEditTime}
+                  aria-label="Jump to time"
+                />
+              )}
               <button
                 className="skip" onClick={goToStart}
-                title="Go to start (0:00)" aria-label="Go to start"
+                data-tip="Go to start" data-kbd="Home" aria-label="Go to start"
               >⏮</button>
-              <button className="play" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
+              <button
+                className="play" onClick={toggle}
+                data-tip={playing ? "Pause" : "Play"} data-kbd="Space"
+                aria-label={playing ? "Pause" : "Play"}
+              >
                 {playing ? "❚❚" : "►"}
               </button>
               <button
                 className="skip" onClick={goToEnd}
-                title="Go to end" aria-label="Go to end"
+                data-tip="Go to end" data-kbd="End" aria-label="Go to end"
               >⏭</button>
               <span className="time__total">{tc(exportDuration)}</span>
             </div>
@@ -1002,31 +1083,33 @@ export default function Editor({
               <div className="history">
                 <button
                   className="hbtn" onClick={undo} disabled={!canUndo}
-                  title="Undo (Ctrl+Z)" aria-label="Undo"
+                  data-tip="Undo" data-kbd="Ctrl+Z" aria-label="Undo"
                 >↺</button>
                 <button
                   className="hbtn" onClick={redo} disabled={!canRedo}
-                  title="Redo (Ctrl+Shift+Z)" aria-label="Redo"
+                  data-tip="Redo" data-kbd="Ctrl+Shift+Z" aria-label="Redo"
                 >↻</button>
               </div>
               <div className="history" style={{ marginLeft: 8 }}>
                 <button
-                  className="hbtn" onClick={() => setTimelineZoom(Math.max(0.5, timelineZoom - 0.5))} title="Zoom out"
+                  className="hbtn" onClick={() => setTimelineZoom(Math.max(0.5, timelineZoom - 0.5))}
+                  data-tip="Zoom timeline out" data-kbd="-"
                 >−</button>
                 <span style={{ padding: '0 8px', fontSize: 11, minWidth: 36, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Math.round(timelineZoom * 100)}%</span>
                 <button
-                  className="hbtn" onClick={() => setTimelineZoom(Math.min(4, timelineZoom + 0.5))} title="Zoom in"
+                  className="hbtn" onClick={() => setTimelineZoom(Math.min(4, timelineZoom + 0.5))}
+                  data-tip="Zoom timeline in" data-kbd="+"
                 >+</button>
 <button
-  className="hbtn" onClick={() => setTimelineZoom(1)} title="Reset zoom"
+  className="hbtn" onClick={() => setTimelineZoom(1)}
+  data-tip="Reset timeline zoom" data-kbd="0"
 >🔍</button>
               </div>
-              {active && (
-                <div className="nowclip">
-                  <span className="nowclip__k">now</span>
-                  {active.gap ? "empty gap" : `image ${activeIndex} / ${imageCount}`}
-                </div>
-              )}
+              <button
+                className="hbtn" onClick={toggleFullscreen}
+                data-tip={fsOn ? "Exit fullscreen" : "Fullscreen preview"} data-kbd="F"
+                aria-label={fsOn ? "Exit fullscreen" : "Fullscreen preview"}
+              >⛶</button>
             </div>
           </div>
 
@@ -1102,6 +1185,36 @@ export default function Editor({
       </div>
 
       <aside className="side" ref={sideRef}>
+        <div
+          className="side__tabs"
+          role="tablist"
+          aria-label="Editor tools"
+        >
+          {SIDE_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`side-tab-${t.id}`}
+              aria-selected={sideTab === t.id}
+              aria-controls={`side-panel-${t.id}`}
+              className={`side__tab ${sideTab === t.id ? "is-on" : ""}`}
+              onClick={() => setSideTab(t.id)}
+              data-tip={t.label}
+            >
+              <span className="side__tab-ic">{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div
+          className={`side__group${sideTab === "export" ? "" : " is-off"}`}
+          id="side-panel-export"
+          role="tabpanel"
+          aria-labelledby="side-tab-export"
+          data-tab="export"
+        >
         <div className="panel export">
           <h2 className="panel__h">Export</h2>
 
@@ -1268,7 +1381,15 @@ export default function Editor({
           )}
           {presetMsg && <div className="note" role="status" style={{ marginTop: 10 }}>{presetMsg}</div>}
         </div>
+        </div>
 
+        <div
+          className={`side__group${sideTab === "effects" ? "" : " is-off"}`}
+          id="side-panel-effects"
+          role="tabpanel"
+          aria-labelledby="side-tab-effects"
+          data-tab="effects"
+        >
         <div className="panel transitions">
           <div className="transitions__head">
             <div className="transitions__titlerow">
@@ -1278,7 +1399,7 @@ export default function Editor({
                 className={`cap-switch ${mixMode ? "is-on" : ""}`}
                 onClick={() => setMixMode((v) => !v)}
                 aria-pressed={mixMode}
-                title="Randomly apply a set of transitions across all cuts"
+                data-tip="Randomly apply a set of transitions across all cuts"
               >
                 <span className="cap-switch__box" />
                 Random mix
@@ -1296,26 +1417,15 @@ export default function Editor({
           <div className="transitions__chips">
             {TRANSITION_LIST.map((tr) => {
               const on = mixMode ? mixPicks.has(tr.id) : currentType === tr.id;
-              const fav = favTransitions.has(tr.id);
               return (
-                <span key={tr.id} className="trchip-wrap">
-                  <button
-                    type="button"
-                    className={`trchip ${on ? "is-on" : ""}`}
-                    onClick={() => (mixMode ? toggleMix(tr.id) : pickType(tr.id))}
-                  >
-                    <span className="trchip__icon">{tr.icon}</span>{tr.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={`trchip-star ${fav ? "is-fav" : ""}`}
-                    onClick={() => toggleFavTransition(tr.id)}
-                    title={fav ? "Remove from favorites" : "Add to favorites"}
-                    aria-label={fav ? "Remove from favorites" : "Add to favorites"}
-                  >
-                    {fav ? "★" : "☆"}
-                  </button>
-                </span>
+                <button
+                  key={tr.id}
+                  type="button"
+                  className={`trchip ${on ? "is-on" : ""}`}
+                  onClick={() => (mixMode ? toggleMix(tr.id) : pickType(tr.id))}
+                >
+                  <span className="trchip__icon">{tr.icon}</span>{tr.label}
+                </button>
               );
             })}
           </div>
@@ -1366,14 +1476,6 @@ export default function Editor({
             </div>
           )}
 
-          <button
-            type="button" className="trall trall--fav"
-            disabled={!favTransitions.size}
-            onClick={() => applyTransitionMix([...favTransitions], clips.map((c) => c.name))}
-            title={favTransitions.size ? "Randomly apply your favorite transitions across all cuts" : "Star some transitions first"}
-          >
-            ★ Apply favorites randomly
-          </button>
         </div>
 
         <div className="panel">
@@ -1403,7 +1505,7 @@ export default function Editor({
               className={`cap-switch ${mixMotionMode ? "is-on" : ""}`}
               onClick={() => setMixMotionMode((v) => !v)}
               aria-pressed={mixMotionMode}
-              title="Randomly apply a set of motion effects across all images"
+              data-tip="Randomly apply a set of motion effects across all images"
             >
               <span className="cap-switch__box" />
               Random mix
@@ -1417,27 +1519,16 @@ export default function Editor({
           <div className="transitions__chips" style={{ marginTop: 8 }}>
             {MOTION_LIST.map((m) => {
               const on = mixMotionMode ? mixMotionPicks.has(m.id) : currentMotion === m.id;
-              const fav = favMotion.has(m.id);
               return (
-                <span key={m.id} className="trchip-wrap">
-                  <button
-                    type="button"
-                    className={`trchip ${on ? "is-on" : ""}`}
-                    onClick={() => (mixMotionMode ? toggleMixMotion(m.id) : pickMotion(m.id))}
-                    title={m.label}
-                  >
-                    <span className="trchip__icon">{m.icon}</span>{m.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={`trchip-star ${fav ? "is-fav" : ""}`}
-                    onClick={() => toggleFavMotion(m.id)}
-                    title={fav ? "Remove from favorites" : "Add to favorites"}
-                    aria-label={fav ? "Remove from favorites" : "Add to favorites"}
-                  >
-                    {fav ? "★" : "☆"}
-                  </button>
-                </span>
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`trchip ${on ? "is-on" : ""}`}
+                  onClick={() => (mixMotionMode ? toggleMixMotion(m.id) : pickMotion(m.id))}
+                  title={m.label}
+                >
+                  <span className="trchip__icon">{m.icon}</span>{m.label}
+                </button>
               );
             })}
           </div>
@@ -1490,14 +1581,6 @@ export default function Editor({
             </div>
           )}
 
-          <button
-            type="button" className="trall trall--fav"
-            disabled={!favMotion.size}
-            onClick={() => applyMotionMix([...favMotion], imageClips.map((c) => c.name))}
-            title={favMotion.size ? "Randomly apply your favorite motion effects across all images" : "Star some effects first"}
-          >
-            ★ Apply favorites randomly
-          </button>
         </div>
 
         <div className="panel">
@@ -1508,7 +1591,7 @@ export default function Editor({
               className={`cap-switch ${fxMixMode ? "is-on" : ""}`}
               onClick={() => setFxMixMode((v) => !v)}
               aria-pressed={fxMixMode}
-              title="Randomly apply a set of image effects across all images"
+              data-tip="Randomly apply a set of image effects across all images"
             >
               <span className="cap-switch__box" />
               Random mix
@@ -1522,27 +1605,16 @@ export default function Editor({
           <div className="transitions__chips" style={{ marginTop: 8 }}>
             {FX_LIST.map((f) => {
               const on = fxMixMode ? fxMixPicks.has(f.id) : currentFx === f.id;
-              const fav = favFx.has(f.id);
               return (
-                <span key={f.id} className="trchip-wrap">
-                  <button
-                    type="button"
-                    className={`trchip ${on ? "is-on" : ""}`}
-                    onClick={() => (fxMixMode ? toggleFxMix(f.id) : pickFx(f.id))}
-                    title={f.label}
-                  >
-                    <span className="trchip__icon">{f.icon}</span>{f.label}
-                  </button>
-                  <button
-                    type="button"
-                    className={`trchip-star ${fav ? "is-fav" : ""}`}
-                    onClick={() => toggleFavFx(f.id)}
-                    title={fav ? "Remove from favorites" : "Add to favorites"}
-                    aria-label={fav ? "Remove from favorites" : "Add to favorites"}
-                  >
-                    {fav ? "★" : "☆"}
-                  </button>
-                </span>
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`trchip ${on ? "is-on" : ""}`}
+                  onClick={() => (fxMixMode ? toggleFxMix(f.id) : pickFx(f.id))}
+                  title={f.label}
+                >
+                  <span className="trchip__icon">{f.icon}</span>{f.label}
+                </button>
               );
             })}
           </div>
@@ -1595,14 +1667,6 @@ export default function Editor({
             </div>
           )}
 
-          <button
-            type="button" className="trall trall--fav"
-            disabled={!favFx.size}
-            onClick={() => applyFxMix([...favFx], imageClips.map((c) => c.name))}
-            title={favFx.size ? "Randomly apply your favorite image effects across all images" : "Star some effects first"}
-          >
-            ★ Apply favorites randomly
-          </button>
         </div>
 
         <div className="panel">
@@ -1619,7 +1683,15 @@ export default function Editor({
             <span className="trdur__val">{fadeOut > 0 ? `${fadeOut.toFixed(1)}s` : "off"}</span>
           </label>
         </div>
+        </div>
 
+        <div
+          className={`side__group${sideTab === "captions" ? "" : " is-off"}`}
+          id="side-panel-captions"
+          role="tabpanel"
+          aria-labelledby="side-tab-captions"
+          data-tab="captions"
+        >
         <div className="panel captions">
           <h2 className="panel__h">Captions</h2>
           {!(captionCues && captionCues.length) ? (
@@ -1765,7 +1837,15 @@ export default function Editor({
             </>
           )}
         </div>
+        </div>
 
+        <div
+          className={`side__group${sideTab === "audio" ? "" : " is-off"}`}
+          id="side-panel-audio"
+          role="tabpanel"
+          aria-labelledby="side-tab-audio"
+          data-tab="audio"
+        >
         <div className="panel sound-effects">
           <h2 className="panel__h">Sound effects</h2>
           <div className="mini-h">
@@ -1972,7 +2052,15 @@ export default function Editor({
             >Cancel</button>
           </div>
         </div>
+        </div>
 
+        <div
+          className={`side__group${sideTab === "overlay" ? "" : " is-off"}`}
+          id="side-panel-overlay"
+          role="tabpanel"
+          aria-labelledby="side-tab-overlay"
+          data-tab="overlay"
+        >
         <div className="panel video-overlay">
           <h2 className="panel__h">Video Overlay</h2>
           <div className="mini-h">Add a texture overlay (e.g., old film, light leaks, grain) that plays over the entire video.</div>
@@ -2210,16 +2298,19 @@ export default function Editor({
             )}
           </div>
         </div>
+        </div>
 
-        <button
-          type="button"
-          className="trall totop"
-          onClick={backToTop}
-          style={{ position: "sticky", bottom: 0, zIndex: 5, marginTop: 0, boxShadow: "0 0 0 1px rgba(255,255,255,.03), 0 -6px 12px rgba(0,0,0,.35)", background: "var(--panel-2)" }}
-          title="Scroll back to the top of the side panel"
-        >
-          ↑ Back to top
-        </button>
+        {(sideTab === "effects" || sideTab === "audio") && (
+          <button
+            type="button"
+            className="trall totop"
+            onClick={backToTop}
+            style={{ position: "sticky", bottom: 0, zIndex: 5, marginTop: 0, boxShadow: "0 0 0 1px rgba(255,255,255,.03), 0 -6px 12px rgba(0,0,0,.35)", background: "var(--panel-2)" }}
+            data-tip="Scroll back to the top of the side panel"
+          >
+            ↑ Back to top
+          </button>
+        )}
       </aside>
 
       <input

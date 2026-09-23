@@ -4,10 +4,15 @@ export const metadata = {
   icons: { icon: "/logo.svg" },
 };
 
+import TooltipLayer from "../components/Tooltip";
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" translate="no" className="notranslate">
-      <body>{children}</body>
+      <body>
+        {children}
+        <TooltipLayer />
+      </body>
     </html>
   );
 }
