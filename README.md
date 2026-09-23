@@ -37,7 +37,7 @@ Requires **Node.js** (LTS, from https://nodejs.org). Then run the launcher for y
 | macOS (Apple Silicon / M-series) | Double-click `1 Run-macOS-Silicon.command` |
 | macOS (Intel) | Double-click `1 Run-macOS-Intel.command` |
 | Linux | `./1 Run-Linux.sh` in a terminal |
-| Android (Termux) | `bash start.sh` in the `AutoEditorModv1.5-Android` folder |
+| Android (Termux) | `bash start.sh` in the `AutoEditorModv1.6-Android` folder |
 
 First run only: the script installs dependencies and builds the UI once. Afterwards it starts the app at http://localhost:4000, opens your browser, and auto-saves finished videos to `~/Downloads/AutoEditor`.
 
@@ -49,16 +49,16 @@ Video Guide link: https://youtu.be/F0AKNE4mDjs?si=KKQsVijokqS7zfHF
 
 ### Android (Termux)
 
-The desktop launchers build from source; on Android you use the ready-made `AutoEditorModv1.5-Android.zip` distributable instead:
+The desktop launchers build from source; on Android you use the ready-made `AutoEditorModv1.6-Android.zip` distributable instead:
 
 1. Install **Termux** from the Google Play Store, open it, and run `termux-setup-storage` (tap **Allow**), then `pkg install -y unzip`.
-2. Copy `AutoEditorModv1.5-Android.zip` into the phone's **Download** folder.
+2. Copy `AutoEditorModv1.6-Android.zip` into the phone's **Download** folder.
 3. Run:
 
 ```bash
 cd ~/storage/downloads
-unzip AutoEditorModv1.5-Android.zip
-cd AutoEditorModv1.5-Android
+unzip AutoEditorModv1.6-Android.zip
+cd AutoEditorModv1.6-Android
 bash start.sh
 ```
 
@@ -71,7 +71,7 @@ I'm not a professional developer, im just a creator that vibe coded this app tha
 
 ## Changelog
 
-See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history. Current: **Version 1.5**.
+See [`dist-assets/changelog.txt`](dist-assets/changelog.txt) for version history. Current: **Version 1.6**.
 
 ## Credits
 

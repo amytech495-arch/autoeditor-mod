@@ -19,6 +19,43 @@ NEW — Save Config presets keep your logo
   overlay video files are still too big for browser storage and must be
   re-added.)
 
+NEW — Right-side panel is now a tablist
+  The side panel is reorganized into Clipchamp-style tabs: Effects, Captions,
+  Audio, Overlay, and Export. Each group is one click away instead of one long
+  scroll, and only Effects / Audio keep their "↑ Back to top" shortcut.
+
+NEW — Fullscreen preview
+  Hit the ⛶ button (or press F) to watch the preview fullscreen. The time box
+  is now a button too — click it, type any moment (0:07, 1:04.5, 64…), press
+  Enter to jump there. Also new shortcuts: End jumps to the end, + / - zoom
+  the timeline, 0 resets the zoom.
+
+NEW — Timeline time chips
+  Hover the ruler to see the exact time under your cursor, and click anywhere
+  on the timeline to pop a time chip at that spot for a precise seek.
+
+NEW — Tooltips with shortcuts
+  Many controls now show a small tooltip on hover — including the keyboard
+  shortcut where one exists (Space, ←/→, Home/End, F, +/-, Ctrl+Z…).
+
+NEW — Smoother background-music waveform
+  The waveform under the timeline is now rendered as a smooth mirrored path
+  that scales with the audio length, so it stays crisp and fine on long
+  tracks.
+
+NEW — Quick tour
+  The first time you open a project, a short tour points out the import bar,
+  preview, timeline, and the right-side tabs. Replay it any time with the
+  "Quick tour" button in the top bar.
+
+CHANGED — Favorites removed
+  The star-favorites for transitions, motion, and image effects are gone; the
+  "Random mix" option already covers picking a random look for you.
+
+FIXED — Duplicate media imports
+  Re-picking files in the "Add media" picker (or dropping a folder twice) no
+  longer adds the same files twice. The editor collapses files it already has.
+
 
 Version 1.5
 =========

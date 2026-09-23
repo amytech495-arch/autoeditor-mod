@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 const STEPS = [
   {
     sel: ".bar__io",
-    text: "Import your voiceover (♪) and media (▦) from the top bar — or drop files anywhere.",
+    text: "Import your voiceover (♪) and media (▦) from the top bar.",
   },
   {
     sel: ".viewer",
