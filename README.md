@@ -10,7 +10,6 @@ Turn timestamp-named images plus a voiceover into an MP4 — entirely on your ow
 
 <img src="screenshots/3.png" width="720" alt="AutoEditor Mod — editor" />
 
-
 ## Features
 
 - **Image Effects** — apply one of 12 effects per clip (B&W, Sepia, Warm, Cool, Film Grain, Noise, Heavy Noise, Vignette, VHS, Grunge, Dust) with an intensity slider.
@@ -43,7 +42,7 @@ First run only: the script installs dependencies and builds the UI once. Afterwa
 
 **Keep the launcher window open** while you use the app — closing it (or pressing Ctrl+C) stops the server. Requires Node.js on PATH.
 
-<img src="screenshots/terminal.png" width="460" alt="AutoEditor Mod — terminal" />
+
 
 Video Guide link: https://youtu.be/F0AKNE4mDjs?si=KKQsVijokqS7zfHF
 
