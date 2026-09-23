@@ -42,7 +42,7 @@ First run only: the script installs dependencies and builds the UI once. Afterwa
 
 **Keep the launcher window open** while you use the app — closing it (or pressing Ctrl+C) stops the server. Requires Node.js on PATH.
 
-
+<img src="screenshots/terminal.png" width="720" alt="AutoEditor Mod — editor" />
 
 Video Guide link: https://youtu.be/F0AKNE4mDjs?si=KKQsVijokqS7zfHF
 
