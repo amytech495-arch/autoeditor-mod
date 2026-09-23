@@ -4,11 +4,12 @@ Turn timestamp-named images plus a voiceover into an MP4 — entirely on your ow
 
 ## Screenshots
 
-<img src="screenshots/editor-1.png" width="720" alt="AutoEditor Mod — editor" />
+<img src="screenshots/1.png" width="720" alt="AutoEditor Mod — editor" />
 
-<img src="screenshots/editor-2.png" width="720" alt="AutoEditor Mod — editor" />
+<img src="screenshots/2.png" width="720" alt="AutoEditor Mod — editor" />
 
-<img src="screenshots/editor-timeline.png" width="720" alt="AutoEditor Mod — timeline" />
+<img src="screenshots/3.png" width="720" alt="AutoEditor Mod — editor" />
+
 
 ## Features
 
