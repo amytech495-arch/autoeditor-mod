@@ -13,7 +13,7 @@ import https from "node:https";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = process.env.DIST_VERSION || "1.5";
+const VERSION = process.env.DIST_VERSION || "1.6";
 const NODE_VER = "v20.18.1";
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 const DIST = path.join(ROOT, "dist");

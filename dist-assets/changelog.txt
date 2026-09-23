@@ -48,6 +48,13 @@ NEW — Quick tour
   preview, timeline, and the right-side tabs. Replay it any time with the
   "Quick tour" button in the top bar.
 
+CHANGED — Everything ships as Version 1.6
+  The release assets are now named for this version: the one desktop zip is
+  AutoEditorModv1.6-Linux-macOS-Windows.zip (Windows / macOS Intel / macOS
+  Apple Silicon / Linux, via the four "1 Run-*" launchers) and Android keeps
+  its own tiny AutoEditorModv1.6-Android.zip for Termux. Pushing the "v1.6"
+  tag builds both in CI and publishes them to the release page.
+
 CHANGED — Favorites removed
   The star-favorites for transitions, motion, and image effects are gone; the
   "Random mix" option already covers picking a random look for you.

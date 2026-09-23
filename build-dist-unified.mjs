@@ -22,7 +22,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = process.env.DIST_VERSION || "1.5";
+const VERSION = process.env.DIST_VERSION || "1.6";
 const DIST = path.join(ROOT, "dist");
 const STAGE = path.join(os.tmpdir(), "autoeditor-build-unified");
 const OUT = path.join(STAGE, `AutoEditorModv${VERSION}`);

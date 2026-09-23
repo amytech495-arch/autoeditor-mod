@@ -4,7 +4,7 @@ Run AutoEditor entirely on an Android phone using **Termux**. Rendering happens
 **on the device** with Termux's own Node + ffmpeg — nothing is uploaded, no cloud,
 no app store.
 
-The distributable is **`AutoEditorModv1.5-Android.zip`** (built on a dev machine with
+The distributable is **`AutoEditorModv1.6-Android.zip`** (built on a dev machine with
 `node build-dist-termux.mjs`). It contains only `bundle.cjs` (the server), the
 `out/` UI, `caption.ttf`, `start.sh`, and a README — **no binaries**, so it's tiny
 (~1 MB). Node and ffmpeg are installed by `start.sh` on first run.
@@ -41,15 +41,15 @@ pkg install -y unzip
 
 ## Getting the app onto the phone and running it
 
-### 4. Put `AutoEditorModv1.5-Android.zip` in Downloads
-Copy/transfer `AutoEditorModv1.5-Android.zip` to the phone's **Download** folder (WhatsApp,
+### 4. Put `AutoEditorModv1.6-Android.zip` in Downloads
+Copy/transfer `AutoEditorModv1.6-Android.zip` to the phone's **Download** folder (WhatsApp,
 a cable, cloud drive — whatever's easiest).
 
 ### 5. Unzip it
 ```bash
 cd ~/storage/downloads
-unzip AutoEditorModv1.5-Android.zip
-cd AutoEditorModv1.5-Android
+unzip AutoEditorModv1.6-Android.zip
+cd AutoEditorModv1.6-Android
 ```
 
 ### 6. Start it
@@ -180,8 +180,8 @@ pkg install -y unzip
 
 # each app version
 cd ~/storage/downloads
-unzip AutoEditorModv1.5-Android.zip
-cd AutoEditorModv1.5-Android
+unzip AutoEditorModv1.6-Android.zip
+cd AutoEditorModv1.6-Android
 bash start.sh                 # first run installs node+ffmpeg
 # → open http://localhost:4000 in the browser
 ```

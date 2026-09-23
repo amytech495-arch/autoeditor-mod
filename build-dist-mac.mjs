@@ -22,7 +22,7 @@ if (process.platform !== "darwin") {
 }
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = process.env.DIST_VERSION || "1.5";
+const VERSION = process.env.DIST_VERSION || "1.6";
 const FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 const ARCH = process.arch; // "arm64" or "x64"
 const DIST = path.join(ROOT, "dist");

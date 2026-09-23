@@ -3,18 +3,18 @@ name: Build + publish distributables (one zip for all desktops + Android)
 # Builds every distributable and, when run on a version tag (or a
 # workflow_dispatch with release_tag), creates the GitHub release page itself
 # and attaches the zips to it. One push of a v* tag ships the lot:
-#   - AutoEditorModv1.5-Linux-macOS-Windows.zip — ALL desktops in ONE zip:
+#   - AutoEditorModv1.6-Linux-macOS-Windows.zip — ALL desktops in ONE zip:
 #                                          Windows / macOS Intel / macOS Apple
 #                                          Silicon / Linux, via the four
 #                                          "1 Run-*" launchers. Pre-built UI.
-#   - AutoEditorModv1.5-Android.zip       — Termux on-device build
+#   - AutoEditorModv1.6-Android.zip       — Termux on-device build
 # Run manually from the repo's Actions tab (leave release_tag empty to only
-# build + upload artifacts) or just push a version tag, e.g. git tag v1.5.
+# build + upload artifacts) or just push a version tag, e.g. git tag v1.6.
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to publish (e.g. v1.5). Empty = build artifacts only."
+        description: "Release tag to publish (e.g. v1.6). Empty = build artifacts only."
         required: false
         type: string
   push:
@@ -34,13 +34,13 @@ jobs:
             arch: all-desktops
             needs_npm: "false" # build-dist-unified.mjs installs + builds the UI itself
             build: node build-dist-unified.mjs
-            asset: AutoEditorModv1.5-Linux-macOS-Windows.zip
+            asset: AutoEditorModv1.6-Linux-macOS-Windows.zip
           - name: android
             runner: ubuntu-latest
             arch: android
             needs_npm: "true"
             build: node build-dist-termux.mjs
-            asset: AutoEditorModv1.5-Android.zip
+            asset: AutoEditorModv1.6-Android.zip
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
