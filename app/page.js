@@ -21,7 +21,7 @@ import ProjectsHome from "../components/ProjectsHome";
 import { DialogHost, showAlert, showPrompt } from "../components/Dialog";
 import {
   requestPersist, storageEstimate, listProjects, getProject, saveProject,
-  renameProject, deleteProject, getMedia, syncMedia, newId,
+  renameProject, deleteProject, getMedia, syncMedia, newId, getMeta, setMeta,
 } from "../lib/projectStore";
 
 // Match a media file by MIME type, falling back to the extension when the
@@ -741,21 +741,37 @@ export default function Home() {
   const ready = audioFile && clips.length > 0;
   const showEditor = built && ready;
 
-  // --- Quick tour: auto-open on the first visit to the editor, plus a manual
-  // "Quick tour" button in the top bar to replay it.
+  // --- Quick tour: auto-open on the first ever visit to the editor, plus a
+  // manual "Quick tour" button in the top bar to replay it. The "seen" flag is
+  // stored BOTH in localStorage and in the IndexedDB project store (getMeta/
+  // setMeta), so the tour can't come back just because localStorage was cleared
+  // or the app was closed mid-tour (closing it only marked it seen on dismiss).
   const [tourOpen, setTourOpen] = useState(false);
   const tourAutoRef = useRef(false);
-  const closeTour = useCallback(() => {
+  const markTourSeen = useCallback(() => {
     try { localStorage.setItem("ae.tour.seen", "1"); } catch (_) {}
-    setTourOpen(false);
+    setMeta("tour.seen", true);
   }, []);
+  const closeTour = useCallback(() => {
+    markTourSeen();
+    setTourOpen(false);
+  }, [markTourSeen]);
   useEffect(() => {
     if (!showEditor || tourAutoRef.current) return;
     tourAutoRef.current = true;
-    let seen = false;
-    try { seen = !!localStorage.getItem("ae.tour.seen"); } catch (_) {}
-    if (!seen) setTourOpen(true);
-  }, [showEditor]);
+    const show = async () => {
+      let seen = false;
+      try { seen = !!localStorage.getItem("ae.tour.seen"); } catch (_) {}
+      if (!seen) seen = !!(await getMeta("tour.seen"));
+      if (seen) return;
+      // Mark it seen the moment it opens — even if the app is closed while the
+      // tour is up it never auto-fires again (replay stays via the top-bar
+      // "Quick tour" button).
+      markTourSeen();
+      setTourOpen(true);
+    };
+    show();
+  }, [showEditor, markTourSeen]);
 
   // --- Projects: client-side persistence (IndexedDB) ------------------------
   // On launch, ask for durable storage and load the saved projects list.
