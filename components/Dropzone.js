@@ -23,6 +23,41 @@ function readEntry(entry, out) {
 
 // A click-or-drop file input. Dropping folders (even several at once) pulls in
 // every file inside; `filled` swaps the label to the loaded state.
+
+// Match files against a comma-separated accept list ("image/*,video/*"). An
+// exact type ("image/png") or a wildcard subtype ("image/*") matches by MIME;
+// if the browser reports an empty type (rare on drag-drop, common from some
+// sources) the file extension is checked so .mp4/.png/.wav still get through
+// instead of being silently dropped.
+const EXT_BY_MIME = {
+  image: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "avif", "jfif", "tif", "tiff"],
+  video: ["mp4", "m4v", "mov", "webm", "mkv", "avi", "ts", "mts", "m2ts", "3gp", "3g2", "ogv"],
+  audio: ["mp3", "wav", "m4a", "aac", "ogg", "oga", "flac", "opus", "wma"],
+};
+function matchesAccept(files, accept) {
+  if (!accept) return Array.from(files);
+  const accepted = accept.split(",").map((t) => t.trim()).filter(Boolean);
+  const wildcardCategories = accepted
+    .filter((t) => t.endsWith("/*"))
+    .map((t) => t.split("/")[0]);
+  const exactTypes = accepted.filter((t) => t.includes("/") && !t.endsWith("/*"));
+  return Array.from(files).filter((f) => {
+    const type = (f.type || "").toLowerCase();
+    if (exactTypes.includes(type)) return true;
+    if (wildcardCategories.some((cat) => type.startsWith(`${cat}/`))) return true;
+    // No usable MIME — fall back to the extension.
+    if (!type) {
+      const ext = (f.name || "").split(".").pop().toLowerCase();
+      return (ext && wildcardCategories.some((cat) => EXT_BY_MIME[cat] && EXT_BY_MIME[cat].includes(ext)))
+        || exactTypes.some((t) => {
+          const [cat, sub] = t.split("/");
+          return sub && sub !== "*" && EXT_BY_MIME[cat] && EXT_BY_MIME[cat].includes(ext);
+        });
+    }
+    return false;
+  });
+}
+
 export default function Dropzone({
   accept, multiple, onFiles, compact,
   icon, title, hint, filled, filledLabel,
@@ -53,14 +88,13 @@ export default function Dropzone({
       if (entries.length) {
         const out = [];
         await Promise.all(entries.map((en) => readEntry(en, out)));
-        const prefix = accept && accept.endsWith("/*") ? accept.split("/")[0] : null;
-        const files = prefix ? out.filter((f) => f.type.startsWith(`${prefix}/`)) : out;
+        const files = matchesAccept(out, accept);
         if (files.length) onFiles(files);
         return;
       }
     }
 
-    if (dt.files && dt.files.length) onFiles(dt.files);
+    if (dt.files && dt.files.length) onFiles(matchesAccept(dt.files, accept));
   }, [onFiles, multiple, accept]);
 
   const cls = ["dz"];

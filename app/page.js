@@ -24,6 +24,21 @@ import {
   renameProject, deleteProject, getMedia, syncMedia, newId,
 } from "../lib/projectStore";
 
+// Match a media file by MIME type, falling back to the extension when the
+// browser reports an empty type (drag-drop and some pickers can do this for
+// video files) so .mp4/.png/.wav still make it onto the timeline.
+const MEDIA_EXT = {
+  image: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "avif", "jfif", "tif", "tiff"],
+  video: ["mp4", "m4v", "mov", "webm", "mkv", "avi", "ts", "mts", "m2ts", "3gp", "3g2", "ogv"],
+  audio: ["mp3", "wav", "m4a", "aac", "ogg", "oga", "flac", "opus", "wma"],
+};
+const isMediaFile = (f, cats = ["image", "video"]) => {
+  const type = (f.type || "").toLowerCase();
+  if (cats.some((c) => type.startsWith(`${c}/`))) return true;
+  const ext = (f.name || "").split(".").pop().toLowerCase();
+  return cats.some((c) => MEDIA_EXT[c] && MEDIA_EXT[c].includes(ext));
+};
+
 function loadImageEl(file) {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
@@ -383,7 +398,7 @@ export default function Home() {
   // Import images, merged by timestamp: a file whose timestamp matches an
   // existing slot fills/replaces it; otherwise it becomes a new slot.
   const addImages = useCallback(async (fileList) => {
-    const all = Array.from(fileList).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    const all = Array.from(fileList).filter((f) => isMediaFile(f));
     // Files whose names contain whitespace (e.g. "0-01 2.jpg") can't be mapped
     // to a timestamp reliably — skip them and say so instead of importing as untimed.
     const files = all.filter((f) => !/\s/.test(f.name));
@@ -411,7 +426,8 @@ export default function Home() {
     try {
       const loaded = await Promise.all(
         unique.map(async (f) => {
-          const img = f.type.startsWith("video/") ? await loadVideoEl(f) : await loadImageEl(f);
+          const isVid = (f.type && f.type.startsWith("video/")) || /\.(mp4|m4v|mov|webm|mkv|avi|ts|mts|m2ts|3gp|3g2|ogv)$/i.test(f.name);
+          const img = isVid ? await loadVideoEl(f) : await loadImageEl(f);
           setImporting((p) => (p ? { ...p, done: p.done + 1 } : p));
           return { file: f, seconds: parseTimestampName(f.name), img };
         })
@@ -435,9 +451,8 @@ export default function Home() {
 
   // Swap the image/video in one slot, keeping its timestamp.
   const replaceImage = useCallback(async (id, file) => {
-    if (!file) return;
-    const isVid = file.type.startsWith("video/");
-    if (!isVid && !file.type.startsWith("image/")) return;
+    if (!file || !isMediaFile(file)) return;
+    const isVid = (file.type && file.type.startsWith("video/")) || /\.(mp4|m4v|mov|webm|mkv|avi|ts|mts|m2ts|3gp|3g2|ogv)$/i.test(file.name);
     const img = isVid ? await loadVideoEl(file) : await loadImageEl(file);
     commitDoc((d) => ({
       ...d,
