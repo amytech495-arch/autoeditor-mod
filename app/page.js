@@ -142,6 +142,8 @@ export default function Home() {
   // Voice-over effect: { effect, strength } applied to the narration in preview
   // and both export paths (null = none). See lib/voiceFx.js.
   const [voiceFx, setVoiceFx] = useState(null);
+  // Voice-over master volume (0–1): scales the narration in preview and export.
+  const [voiceLevel, setVoiceLevel] = useState(1);
   // Background-music (BG) lane: uploaded audio placed on the timeline, each clip
   // movable with its own waveform and volume. Replaces the old multi-layer system.
   // Each: { id, name, file, url, start, duration, peaks, volume }
@@ -862,12 +864,13 @@ export default function Home() {
     sfxUploads: sfxUploads.map((u) => ({ mediaId: u.mediaId, label: u.label })),
     sfxMaster,
     voiceFx,
+    voiceLevel,
     idCounter: idRef.current,
     built,
   }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd,
       motionByName, fxByName, trimByName, volumeByName, fitByName,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      transitionsByName, slots, audioFile, bgClips, sfx, sfxUploads, sfxMaster, voiceFx, built]);
+      transitionsByName, slots, audioFile, bgClips, sfx, sfxUploads, sfxMaster, voiceFx, voiceLevel, built]);
 
   const saveCurrent = useCallback(async () => {
     const proj = currentProject;
@@ -969,6 +972,7 @@ export default function Home() {
       setSfxOpen(null);
       setSfxMaster(d.sfxMaster ?? 1);
       setVoiceFx(sanitizeVoiceFx(d.voiceFx));
+      setVoiceLevel(Math.max(0, Math.min(1, d.voiceLevel == null ? 1 : +d.voiceLevel)));
       resetDoc({ slots: newSlots, transitionsByName: d.transitionsByName || {} });
       const st = d.settings || {};
       setAspect(st.aspect ?? "16:9"); setFps(st.fps ?? 30); setRenderQuality(st.renderQuality ?? "full");
@@ -1077,6 +1081,7 @@ export default function Home() {
         captions, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
         sfx: mixedAudio,
         voiceFx,
+        voiceLevel,
         overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
         watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         textOverlays,
@@ -1091,7 +1096,7 @@ export default function Home() {
   }, [clips, exportDuration, imagesByName, videosByName, audioFile, renderDims, fps, transitionsByName, transitionDuration,
       motionByName, motionAmount, fxByName, fxAmount, trimByName, volumeByName, fitByName, videoInfoByName, fadeIn, fadeOut,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, mixedAudio,
-      voiceFx,
+      voiceFx, voiceLevel,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled]);
 
@@ -1187,6 +1192,7 @@ export default function Home() {
           captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
           sfx: mixedAudio,
           voiceFx,
+          voiceLevel,
           overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
           watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         },
@@ -1263,7 +1269,7 @@ export default function Home() {
   }, [clips, exportDuration, transitionsByName, motionByName, fxByName, imagesByName, renderDims, fps, transitionDuration, motionAmount, fxAmount, audioFile,
       videosByName, videoInfoByName, fitByName, trimByName, volumeByName, currentProject, flashDone, wcProfile,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
-      mixedAudio, voiceFx,
+      mixedAudio, voiceFx, voiceLevel,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled]);
 
@@ -1505,6 +1511,7 @@ export default function Home() {
           sfxUploads={sfxUploads} sfxOpen={sfxOpen} setSfxOpen={setSfxOpen}
           sfxMaster={sfxMaster} setSfxMaster={setSfxMaster}
           voiceFx={voiceFx} setVoiceFx={setVoiceFx}
+          voiceLevel={voiceLevel} setVoiceLevel={setVoiceLevel}
           overlayUrl={overlayUrl} overlayDuration={overlayDuration}
           setOverlayFile={setOverlayFile} setOverlayUrl={setOverlayUrl}
           setOverlayDuration={setOverlayDuration}

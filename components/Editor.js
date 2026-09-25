@@ -142,6 +142,7 @@ export default function Editor({
   selectedSound, setSelectedSound, sfxUploads = [], sfxOpen, setSfxOpen,
   sfxMaster = 1, setSfxMaster,
   voiceFx, setVoiceFx,
+  voiceLevel = 1, setVoiceLevel,
   overlayUrl, overlayDuration,
   setOverlayFile, setOverlayUrl, setOverlayDuration,
   overlayOpacity, setOverlayOpacity,
@@ -256,6 +257,14 @@ export default function Editor({
     if (!audioUrl) return;
     if (vfxCtxRef.current || voiceFx) applyLiveVoiceFx(voiceFx).catch(() => {});
   }, [voiceFx, audioUrl, applyLiveVoiceFx]);
+
+  // Voice-over master volume: scale the preview element directly. When the audio
+  // is routed through the AudioContext (an effect is applied) the element's own
+  // .volume still affects the MediaElementAudioSourceNode, so this works either way.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (a) a.volume = Math.max(0, Math.min(1, voiceLevel));
+  }, [voiceLevel, audioUrl]);
 
   // Tear down the preview graph on unmount.
   useEffect(() => () => {
@@ -2062,6 +2071,15 @@ export default function Editor({
               </label>
             </>
           )}
+          <label className="trdur" style={{ marginTop: 8 }} title="Master volume of the voiceover narration">
+            <span>Master volume</span>
+            <input
+              type="range" min={0} max={1} step={0.01}
+              value={voiceLevel}
+              onChange={(e) => setVoiceLevel && setVoiceLevel(+e.target.value)}
+            />
+            <span className="trdur__val">{Math.round(voiceLevel * 100)}%</span>
+          </label>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button
               type="button" className="mbtn mbtn--primary" style={{ flex: 1 }}
