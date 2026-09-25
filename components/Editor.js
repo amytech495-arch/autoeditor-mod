@@ -109,7 +109,7 @@ function fadeGain(t, clip) {
 // Right-side tool panel, organised as a Clipchamp-style tablist.
 const SIDE_TABS = [
   { id: "effects", icon: "✦", label: "Effects" },
-  { id: "captions", icon: "💬", label: "Captions" },
+  { id: "captions", icon: "©", label: "Captions" },
   { id: "audio", icon: "♪", label: "Audio" },
   { id: "overlay", icon: "▤", label: "Overlay" },
   { id: "export", icon: "⤓", label: "Export" },
@@ -213,7 +213,18 @@ export default function Editor({
   const [currentFx, setCurrentFx] = useState("none"); // drives "Apply … to all" in Image Effects
   const [warn4k, setWarn4k] = useState(false); // transient "4K is heavy" toast on quality select
   const warnTimer = useRef(null);
-  useEffect(() => () => { clearTimeout(warnTimer.current); clearTimeout(presetMsgTimer.current); }, []);
+  // Transient toast for apply/clear actions ("Transition applied", "Mix cleared"…).
+  const [flash, setFlash] = useState(null);
+  const [flashWarn, setFlashWarn] = useState(false);
+  const flashTimerRef = useRef(null);
+  const flashNote = useCallback((msg, warn = false) => {
+    setFlash(msg); setFlashWarn(!!warn);
+    clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlash(null), 2600);
+  }, []);
+  useEffect(() => () => {
+    clearTimeout(warnTimer.current); clearTimeout(presetMsgTimer.current); clearTimeout(flashTimerRef.current);
+  }, []);
   // Sound-effect previews are one-shots — silence any still playing on unmount.
   useEffect(() => () => stopSfxPreviews(), []);
 
@@ -1443,7 +1454,10 @@ export default function Editor({
           {!mixMode ? (
             <button
               type="button" className="trall"
-              onClick={() => applyTransitionAll(currentType, clips.map((c) => c.name))}
+              onClick={() => {
+                applyTransitionAll(currentType, clips.map((c) => c.name));
+                flashNote(`Transition “${transitionOf(currentType).label}” applied to all cuts`);
+              }}
             >
               Apply “{transitionOf(currentType).label}” to all cuts
             </button>
@@ -1455,10 +1469,13 @@ export default function Editor({
               <span className="trmix-btns">
                 <button
                   type="button" className="trall trmix-apply"
-                  onClick={() => applyTransitionMix(
-                    mixPicks.size ? [...mixPicks] : TRANSITION_LIST.filter((t) => t.id !== "cut").map((t) => t.id),
-                    clips.map((c) => c.name),
-                  )}
+                  onClick={() => {
+                    applyTransitionMix(
+                      mixPicks.size ? [...mixPicks] : TRANSITION_LIST.filter((t) => t.id !== "cut").map((t) => t.id),
+                      clips.map((c) => c.name),
+                    );
+                    flashNote("Random transition mix applied");
+                  }}
                 >
                   Apply random mix to video
                 </button>
@@ -1467,6 +1484,7 @@ export default function Editor({
                   onClick={() => {
                     setMixPicks(new Set());
                     applyTransitionAll("cut", clips.map((c) => c.name));
+                    flashNote("All cuts reset to plain cut", true);
                   }}
                   title="Clear the applied random mix"
                 >
@@ -1488,12 +1506,12 @@ export default function Editor({
             <span className="trdur__val">{Math.round(motionAmount * 100)}%</span>
           </label>
           <div className="seg" style={{ marginTop: 8 }}>
-            <button type="button" onClick={() => applyMotionAll("zoomin", imageClips.map((c) => c.name))}>Zoom in all</button>
-            <button type="button" onClick={() => applyMotionAll("zoomout", imageClips.map((c) => c.name))}>Zoom out all</button>
+            <button type="button" onClick={() => { applyMotionAll("zoomin", imageClips.map((c) => c.name)); flashNote("Zoom in applied to all images"); }}>Zoom in all</button>
+            <button type="button" onClick={() => { applyMotionAll("zoomout", imageClips.map((c) => c.name)); flashNote("Zoom out applied to all images"); }}>Zoom out all</button>
           </div>
           <div className="seg" style={{ marginTop: 6 }}>
-            <button type="button" onClick={() => applyMotionAlternate(imageClips.map((c) => c.name))}>Alternate</button>
-            <button type="button" onClick={() => applyMotionAll("none", imageClips.map((c) => c.name))}>Clear</button>
+            <button type="button" onClick={() => { applyMotionAlternate(imageClips.map((c) => c.name)); flashNote("Alternating zoom applied to all images"); }}>Alternate</button>
+            <button type="button" onClick={() => { applyMotionAll("none", imageClips.map((c) => c.name)); flashNote("Motion cleared from all images", true); }}>Clear</button>
           </div>
         </div>
 
@@ -1543,13 +1561,13 @@ export default function Editor({
               <div className="seg" style={{ marginTop: 8 }}>
                 <button
                   type="button"
-                  onClick={() => applyMotionAll(currentMotion, imageClips.map((c) => c.name))}
+                  onClick={() => { applyMotionAll(currentMotion, imageClips.map((c) => c.name)); flashNote(`Motion “${motionOf(currentMotion).label}” applied to all images`); }}
                 >
                   Apply “{motionOf(currentMotion).label}” to all
                 </button>
               </div>
               <div className="seg" style={{ marginTop: 6 }}>
-                <button type="button" onClick={() => applyMotionAll("none", imageClips.map((c) => c.name))}>Clear all</button>
+                <button type="button" onClick={() => { applyMotionAll("none", imageClips.map((c) => c.name)); flashNote("Motion cleared from all images", true); }}>Clear all</button>
               </div>
             </>
           ) : (
@@ -1560,10 +1578,13 @@ export default function Editor({
               <span className="trmix-btns">
                 <button
                   type="button" className="trall trmix-apply"
-                  onClick={() => applyMotionMix(
-                    mixMotionPicks.size ? [...mixMotionPicks] : MOTION_LIST.filter((m) => m.id !== "none").map((m) => m.id),
-                    imageClips.map((c) => c.name),
-                  )}
+                  onClick={() => {
+                    applyMotionMix(
+                      mixMotionPicks.size ? [...mixMotionPicks] : MOTION_LIST.filter((m) => m.id !== "none").map((m) => m.id),
+                      imageClips.map((c) => c.name),
+                    );
+                    flashNote("Random motion mix applied");
+                  }}
                 >
                   Apply random mix to images
                 </button>
@@ -1572,6 +1593,7 @@ export default function Editor({
                   onClick={() => {
                     setMixMotionPicks(new Set());
                     applyMotionAll("none", imageClips.map((c) => c.name));
+                    flashNote("Motion mix cleared from all images", true);
                   }}
                   title="Clear the applied random mix"
                 >
@@ -1629,13 +1651,13 @@ export default function Editor({
               <div className="seg" style={{ marginTop: 8 }}>
                 <button
                   type="button"
-                  onClick={() => applyFxAll(currentFx, imageClips.map((c) => c.name))}
+                  onClick={() => { applyFxAll(currentFx, imageClips.map((c) => c.name)); flashNote(`Effect “${fxOf(currentFx).label}” applied to all images`); }}
                 >
                   Apply “{fxOf(currentFx).label}” to all
                 </button>
               </div>
               <div className="seg" style={{ marginTop: 6 }}>
-                <button type="button" onClick={() => applyFxAll("none", imageClips.map((c) => c.name))}>Clear all</button>
+                <button type="button" onClick={() => { applyFxAll("none", imageClips.map((c) => c.name)); flashNote("Effects cleared from all images", true); }}>Clear all</button>
               </div>
             </>
           ) : (
@@ -1646,10 +1668,13 @@ export default function Editor({
               <span className="trmix-btns">
                 <button
                   type="button" className="trall trmix-apply"
-                  onClick={() => applyFxMix(
-                    fxMixPicks.size ? [...fxMixPicks] : FX_LIST.filter((f) => f.id !== "none").map((f) => f.id),
-                    imageClips.map((c) => c.name),
-                  )}
+                  onClick={() => {
+                    applyFxMix(
+                      fxMixPicks.size ? [...fxMixPicks] : FX_LIST.filter((f) => f.id !== "none").map((f) => f.id),
+                      imageClips.map((c) => c.name),
+                    );
+                    flashNote("Random effect mix applied");
+                  }}
                 >
                   Apply random mix to images
                 </button>
@@ -1658,6 +1683,7 @@ export default function Editor({
                   onClick={() => {
                     setFxMixPicks(new Set());
                     applyFxAll("none", imageClips.map((c) => c.name));
+                    flashNote("Effect mix cleared from all images", true);
                   }}
                   title="Clear the applied random mix"
                 >
@@ -2039,9 +2065,13 @@ export default function Editor({
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button
               type="button" className="mbtn mbtn--primary" style={{ flex: 1 }}
-              onClick={() => setVoiceFx && setVoiceFx(
-                vfxDraft.effect === "none" ? null : sanitizeVoiceFx(vfxDraft)
-              )}
+              onClick={() => {
+                setVoiceFx && setVoiceFx(
+                  vfxDraft.effect === "none" ? null : sanitizeVoiceFx(vfxDraft)
+                );
+                if (vfxDraft.effect === "none") flashNote("Voice effect removed", true);
+                else flashNote(`Voice effect “${(VOICE_FX.find((e) => e.id === vfxDraft.effect) || {}).label || vfxDraft.effect}” applied`);
+              }}
             >Apply</button>
             <button
               type="button" className="mbtn"
@@ -2584,6 +2614,16 @@ export default function Editor({
           </div>
         );
       })()}
+
+      {flash && (
+        <div
+          className={`flashtoast${flashWarn ? " flashtoast--warn" : ""}`}
+          role="status" aria-live="polite" onClick={() => setFlash(null)}
+        >
+          <span className="flashtoast__ok" aria-hidden="true">✓</span>
+          <span>{flash}</span>
+        </div>
+      )}
     </section>
   );
 }

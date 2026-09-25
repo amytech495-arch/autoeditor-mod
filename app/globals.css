@@ -371,13 +371,24 @@ body {
 
 .render {
   width: 100%; font: inherit; font-weight: 700; font-size: 15px;
-  background: linear-gradient(180deg, #f6f7f9, #d7d9dd); color: var(--accent-ink); border: none; border-radius: 11px;
+  background: #18BFD6; color: #fff; border: 2px solid #0E8FA3; border-radius: 11px;
   padding: 13px; cursor: pointer;
-  transition: filter .15s, transform .05s;
+  box-shadow: 0 4px 12px rgba(24, 191, 214, 0.22);
+  transition: filter .15s, transform .05s, background-color .15s, border-color .15s, box-shadow .15s;
 }
-.render:hover:not(:disabled) { filter: brightness(1.07); }
-.render:active:not(:disabled) { transform: translateY(1px); }
-.render:disabled { opacity: .65; cursor: progress; }
+.render:hover:not(:disabled) {
+  background: #22D3EE;
+  border-color: #18BFD6;
+}
+.render:active:not(:disabled) {
+  background: #2CD9EB;
+  transform: scale(.97);
+  box-shadow: 0 0 0 3px rgba(24, 191, 214, .4);
+}
+.render:disabled {
+  background: #d7d9dd; color: #6a6e76; border-color: transparent; box-shadow: none;
+  opacity: .65; cursor: progress;
+}
 .render--busy { cursor: progress; }
 .render-meta {
   display: flex; justify-content: space-between; gap: 10px;
@@ -387,9 +398,10 @@ body {
   width: 100%; margin-top: 8px; font: inherit; font-size: 13px; font-weight: 600;
   color: #ffb4b4; background: rgba(217,148,136,.08);
   border: 1px solid rgba(217,148,136,.28); border-radius: 10px;
-  padding: 9px; cursor: pointer;
+  padding: 9px; cursor: pointer; transition: background .12s, border-color .12s, transform .08s;
 }
 .cancel:hover { background: rgba(217,148,136,.14); border-color: var(--bad); }
+.cancel:active:not(:disabled) { transform: scale(.97); }
 .download {
   display: block; text-align: center; margin-top: 10px; text-decoration: none;
   font-weight: 700; font-size: 15px; color: var(--green);
@@ -735,8 +747,10 @@ body {
   width: 100%; margin-top: 10px; font: inherit; font-size: 13px; color: var(--text);
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 9px; padding: 9px 14px; cursor: pointer;
+  transition: border-color .12s, transform .08s;
 }
 .trall:hover { border-color: var(--accent); }
+.trall:active:not(:disabled) { transform: scale(.97); }
 .trall:disabled { opacity: .5; cursor: default; }
 .trall:disabled:hover { border-color: var(--line); }
 
@@ -797,9 +811,10 @@ body {
 .seg button {
   flex: 1; font: inherit; font-size: 12.5px; color: var(--text);
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
-  padding: 7px 0; cursor: pointer; transition: border-color .12s, background .12s;
+  padding: 7px 0; cursor: pointer; transition: border-color .12s, background .12s, transform .08s;
 }
 .seg button:hover { border-color: var(--accent); }
+.seg button:active:not(:disabled) { transform: scale(.95); }
 .seg button.is-on { border-color: var(--accent); background: rgba(231,232,236,.14); color: #dfe6ff; }
 .seg button:disabled { opacity: .5; cursor: default; }
 .seg button:disabled:hover { border-color: var(--line); }
@@ -893,9 +908,10 @@ body {
   flex: 1; min-width: 130px; font: inherit; font-size: 13.5px; font-weight: 600;
   color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 10px; padding: 11px 14px; cursor: pointer;
-  transition: border-color .12s, background .12s, filter .12s;
+  transition: border-color .12s, background .12s, filter .12s, transform .08s;
 }
 .mbtn:hover { border-color: var(--accent); }
+.mbtn:active:not(:disabled) { transform: scale(.97); }
 .mbtn--primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .mbtn--primary:hover { filter: brightness(1.07); border-color: transparent; }
 .mbtn--danger { color: #ffb4b4; background: rgba(217,148,136,.08); border-color: rgba(217,148,136,.28); }
@@ -1261,6 +1277,23 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 }
 .donetoast--warn { border-color: var(--amber); }
 .donetoast--warn .donetoast__ok { background: var(--amber); color: #202127; }
+
+/* Transient toast for effect apply/clear actions. */
+.flashtoast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  z-index: 70; display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 9px 16px; border-radius: 999px; max-width: calc(100vw - 24px);
+  background: rgba(23, 23, 26, 0.97); border: 1px solid var(--accent);
+  color: var(--text); font-size: 13px; font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .5); animation: dlg-fade .18s ease;
+}
+.flashtoast__ok {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  background: var(--accent); color: var(--accent-ink);
+}
+.flashtoast--warn { border-color: var(--amber); }
+.flashtoast--warn .flashtoast__ok { background: var(--amber); color: #202127; }
 
 /* Full-screen block for browsers that can't export video (e.g. Firefox). */
 .unsupported {
