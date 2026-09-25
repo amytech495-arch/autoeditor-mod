@@ -323,6 +323,19 @@ export default function Timeline({
               {label(t)}
             </span>
           ))}
+          {pop && (
+            <span
+              className="tl__poplabel"
+              key={pop.id}
+              style={{ left: pctZoom(pop.t) }}
+              onAnimationEnd={() => setPop(null)}
+            >
+              {label(pop.t)}
+            </span>
+          )}
+          {hover != null && (
+            <span className="tl__hoverlabel" style={{ left: pctZoom(hover) }}>{label(hover)}</span>
+          )}
         </div>
       </div>
 
@@ -503,21 +516,7 @@ export default function Timeline({
           </div>
 
           {hover != null && (
-            <>
-              <div className="tl__hoverline" style={{ left: pctZoom(hover) }} aria-hidden="true" />
-              <span className="tl__hoverlabel" style={{ left: pctZoom(hover) }}>{label(hover)}</span>
-            </>
-          )}
-
-          {pop && (
-            <span
-              className="tl__poplabel"
-              key={pop.id}
-              style={{ left: pctZoom(pop.t) }}
-              onAnimationEnd={() => setPop(null)}
-            >
-              {label(pop.t)}
-            </span>
+            <div className="tl__hoverline" style={{ left: pctZoom(hover) }} aria-hidden="true" />
           )}
         </div>
       </div>
