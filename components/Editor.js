@@ -126,7 +126,7 @@ export default function Editor({
   fadeIn, setFadeIn, fadeOut, setFadeOut,
   motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
   fxByName = {}, setFx, applyFxAll, applyFxMix, fxAmount, setFxAmount,
-  videoInfoByName = {}, trimByName = {}, setTrim, volumeByName = {}, setVolume,
+  videoInfoByName = {}, trimByName = {}, setTrim, volumeByName = {}, setVolume, muteByName = {}, setMute,
   fitByName = {}, setFit,
   trimEnd, setTrimEnd, exportDuration,
   undo, redo, canUndo, canRedo,
@@ -678,8 +678,9 @@ export default function Editor({
       if (!v || !pr) return null;
       const srcTime = Math.min(vinfo.duration || 0, Math.max(0, pr.trimStart + (tt - c.start) * pr.speed));
       const clipVol = volumeByName[c.name] == null ? 0.5 : volumeByName[c.name];
-      v.volume = Math.min(1, Math.max(0, clipVol));
-      v.muted = clipVol <= 0;
+      const clipMute = !!muteByName[c.name];
+      v.volume = clipMute ? 0 : Math.min(1, Math.max(0, clipVol));
+      v.muted = clipMute || clipVol <= 0;
       v.playbackRate = Math.min(16, Math.max(0.0625, pr.speed));
       if (v.paused) { try { v.currentTime = srcTime; } catch { /* ignore */ } v.play().catch(() => {}); }
       else if (Math.abs(v.currentTime - srcTime) > 0.6) { try { v.currentTime = srcTime; } catch { /* ignore */ } }
@@ -2627,7 +2628,22 @@ export default function Editor({
                       />
                       <span className="trdur__val">{Math.round(vol * 100)}%</span>
                     </div>
-                    <span className="modal__hint">Plays under the voiceover. 0% = silent.</span>
+                    <div className="modal__mute">
+                      {(() => {
+                        const muted = !!muteByName[inspect];
+                        return (
+                          <button
+                            type="button"
+                            className={`mbtn ${muted ? "mbtn--danger" : ""}`}
+                            onClick={() => setMute && setMute(inspect, !muted)}
+                            style={{ padding: "6px 12px", fontSize: 12 }}
+                          >
+                            {muted ? "🔇 Unmute" : "🔊 Mute"}
+                          </button>
+                        );
+                      })()}
+                    </div>
+                    <span className="modal__hint">Plays under the voiceover. Muted clips are silent in the preview and in the render.</span>
                   </div>
                 </div>
               )}

@@ -873,6 +873,10 @@ body {
 .modal__vid { margin: 0 0 14px; display: grid; gap: 12px; }
 .modal__slider { display: flex; align-items: center; gap: 10px; }
 .modal__slider input[type="range"] { flex: 1; }
+.modal__mute { margin-top: 8px; display: flex; }
+.modal__mute .mbtn:hover:not(:disabled) { filter: none; }
+.modal__mute .mbtn--danger { background: #c62828; border-color: #8e1a1a; color: #fff; }
+.modal__mute .mbtn--danger:hover:not(:disabled) { background: #d63535; border-color: #c62828; }
 .modal__hint { display: block; margin-top: 5px; font-size: 11.5px; color: var(--muted); }
 .modal__hint--warn { color: #ffcf8f; }
 /* Video-editor style trim bar: a rectangle track, a highlighted "plays" region,

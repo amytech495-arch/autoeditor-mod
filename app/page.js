@@ -198,6 +198,7 @@ export default function Home() {
   const [fxAmount, setFxAmount] = useState(0.5);       // image effect intensity (0–1)
   const [trimByName, setTrimByName] = useState({});   // video clip name -> in-point seconds
   const [volumeByName, setVolumeByName] = useState({}); // video clip name -> 0..1 (default 0.5)
+  const [muteByName, setMuteByName] = useState({});      // video clip name -> muted (overrides volume playback)
   const [fitByName, setFitByName] = useState({});     // video clip name -> "fit" (fast-fwd, default) | "trim" (1x)
   const [trimEnd, setTrimEnd] = useState(0); // export end point (0 = untrimmed / full audio)
   const [captionRaw, setCaptionRaw] = useState(null); // uploaded transcript text
@@ -605,6 +606,13 @@ export default function Home() {
   const setVolume = useCallback((name, vol) => {
     setVolumeByName((prev) => ({ ...prev, [name]: Math.min(1, Math.max(0, +vol || 0)) }));
   }, []);
+  const setMute = useCallback((name, muted) => {
+    setMuteByName((prev) => {
+      const next = { ...prev, [name]: !!muted };
+      if (!muted) delete next[name]; // leaving it out = unmuted default
+      return next;
+    });
+  }, []);
   const setFit = useCallback((name, mode) => {
     setFitByName((prev) => ({ ...prev, [name]: mode }));
   }, []);
@@ -826,7 +834,7 @@ export default function Home() {
     setWatermarkSize(0.15); setWatermarkX(0.8); setWatermarkY(0.88); setWatermarkOpacity(0.9);
     setAspect("16:9"); setFps(coarse ? 24 : 30); setRenderQuality(coarse ? "720p" : "full");
     setTransitionDuration(DEFAULT_TRANSITION_DURATION); setFadeIn(0.5); setFadeOut(0.6);
-    setMotionByName({}); setMotionAmount(0.08); setTrimByName({}); setVolumeByName({}); setFitByName({});
+    setMotionByName({}); setMotionAmount(0.08); setTrimByName({}); setVolumeByName({}); setMuteByName({}); setFitByName({});
     setFxByName({}); setFxAmount(0.5);
     setTrimEnd(0);
     setCaptionRaw(null); setCaptionName(null); setCaptionsOn(false); setCaptionStyle("classic");
@@ -863,7 +871,7 @@ export default function Home() {
   const buildProjectData = useCallback(() => ({
     v: 1,
     settings: { aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd },
-    maps: { motionByName, fxByName, trimByName, volumeByName, fitByName },
+    maps: { motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName },
     captions: { captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation },
     transitionsByName,
     slots: slots.map((s) => ({
@@ -885,7 +893,7 @@ export default function Home() {
     idCounter: idRef.current,
     built,
   }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd,
-      motionByName, fxByName, trimByName, volumeByName, fitByName,
+      motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
       transitionsByName, slots, audioFile, bgClips, sfx, sfxUploads, sfxMaster, voiceFx, voiceLevel, built]);
 
@@ -916,7 +924,7 @@ export default function Home() {
     const t = setTimeout(() => { if (saveRef.current) saveRef.current(); }, 1200);
     return () => clearTimeout(t);
   }, [view, currentProject, loadingProject, slots, transitionsByName, aspect, fps, renderQuality, transitionDuration,
-      fadeIn, fadeOut, motionByName, motionAmount, trimByName, volumeByName, fitByName, trimEnd,
+      fadeIn, fadeOut, motionByName, motionAmount, trimByName, volumeByName, muteByName, fitByName, trimEnd,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
       audioFile, bgClips, sfx, sfxUploads, sfxMaster, built]);
 
@@ -999,7 +1007,7 @@ export default function Home() {
       setFxAmount(st.fxAmount ?? 0.5);
       const mp = d.maps || {};
       setMotionByName(mp.motionByName || {}); setTrimByName(mp.trimByName || {});
-      setVolumeByName(mp.volumeByName || {}); setFitByName(mp.fitByName || {});
+      setVolumeByName(mp.volumeByName || {}); setMuteByName(mp.muteByName || {}); setFitByName(mp.fitByName || {});
       setFxByName(mp.fxByName || {});
       const cp = d.captions || {};
       setCaptionRaw(cp.captionRaw ?? null); setCaptionName(cp.captionName ?? null);
@@ -1089,7 +1097,7 @@ export default function Home() {
       });
       const volumes = exportClips.map((c) =>
         Object.prototype.hasOwnProperty.call(videosByName, c.name)
-          ? (volumeByName[c.name] == null ? 0.5 : volumeByName[c.name]) : 0);
+          ? (muteByName[c.name] ? 0 : (volumeByName[c.name] == null ? 0.5 : volumeByName[c.name])) : 0);
       const captions = captionsOn && captionCues.length ? captionCues : null;
       const blob = await renderVideo({
         clips: exportClips, imagesByName, videosByName, audioFile,
@@ -1112,7 +1120,7 @@ export default function Home() {
       if (!cancelRef.current) setBusy(false);
     }
   }, [clips, exportDuration, imagesByName, videosByName, audioFile, renderDims, fps, transitionsByName, transitionDuration,
-      motionByName, motionAmount, fxByName, fxAmount, trimByName, volumeByName, fitByName, videoInfoByName, fadeIn, fadeOut,
+      motionByName, motionAmount, fxByName, fxAmount, trimByName, volumeByName, muteByName, fitByName, videoInfoByName, fadeIn, fadeOut,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, mixedAudio,
       voiceFx, voiceLevel,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
@@ -1197,7 +1205,7 @@ export default function Home() {
       });
       const volumes = exportClips.map((c) =>
         Object.prototype.hasOwnProperty.call(videosByName, c.name)
-          ? (volumeByName[c.name] == null ? 0.5 : volumeByName[c.name]) : 0);
+          ? (muteByName[c.name] ? 0 : (volumeByName[c.name] == null ? 0.5 : volumeByName[c.name])) : 0);
       // Request the full 8 Mbps. The renderer decides the effective rate: a streamed
       // (to-disk) output keeps it, while an in-memory output is capped to a memory-safe
       // rate for long videos — it makes that call because only it knows whether streaming
@@ -1288,7 +1296,7 @@ export default function Home() {
       setWcPhase("Rendering");
     }
   }, [clips, exportDuration, transitionsByName, motionByName, fxByName, imagesByName, renderDims, fps, transitionDuration, motionAmount, fxAmount, audioFile,
-      videosByName, videoInfoByName, fitByName, trimByName, volumeByName, currentProject, flashDone, wcProfile,
+      videosByName, videoInfoByName, fitByName, trimByName, volumeByName, muteByName, currentProject, flashDone, wcProfile,
       captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
       mixedAudio, voiceFx, voiceLevel,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
@@ -1511,6 +1519,7 @@ export default function Home() {
           videoInfoByName={videoInfoByName}
           trimByName={trimByName} setTrim={setTrim}
           volumeByName={volumeByName} setVolume={setVolume}
+          muteByName={muteByName} setMute={setMute}
           fitByName={fitByName} setFit={setFit}
           trimEnd={exportDuration} setTrimEnd={setTrimEnd} exportDuration={exportDuration}
           undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
