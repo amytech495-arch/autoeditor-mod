@@ -345,3 +345,50 @@ describe("segmented render (large graph timelines)", () => {
     expect(p.passes).toBeUndefined();
   });
 });
+
+describe("caption word animations (ASS burn)", () => {
+  const N = 65, D = 2, TD = 0.4; // > SEGMENT_MAX (60) forces the segmented path
+  const many = Array.from({ length: N }, (_, k) => ({ name: "c" + k, start: +(k * (D - TD)).toFixed(3), duration: D, gap: false }));
+  const paths = Array.from({ length: N }, (_, k) => "img" + k + ".png");
+  const trans = many.map((_, k) => (k === 0 ? "cut" : "fade"));
+  const io2 = { paths, audioName: "audio.mp3", capChain: "" };
+  const wordCues = [{
+    start: 1, end: 4, text: "hello world",
+    words: [{ w: "hello", start: 1, end: 1.6 }, { w: "world", start: 1.8, end: 2.6 }],
+  }];
+
+  it("burns karaoke via the ass filter (not drawtext) with a per-segment .ass file", () => {
+    const p = buildRenderPlan(
+      { ...base, clips: many, transitions: trans, transitionDuration: TD, captions: wordCues, captionStyle: "classic", captionAnimation: "karaoke", captionFont: "anton" },
+      io2
+    );
+    expect(p.mode).toBe("segmented");
+    const seg0fc = p.passes[0].filterFiles;
+    const assFile = seg0fc.find((f) => f.name === "cap-s0.ass");
+    expect(assFile).toBeTruthy();
+    expect(assFile.text).toContain("Style: Cap,Anton,");
+    expect(assFile.text).toContain("{\\k60}hello");
+    const fcText = seg0fc[0].text;
+    expect(fcText).toContain("ass=cap-s0.ass:fontsdir=.");
+    expect(fcText).not.toContain("drawtext");
+  });
+
+  it("keeps drawtext (with the selected font) for none/fade/slide", () => {
+    const p = buildRenderPlan(
+      { ...base, clips: many, transitions: trans, transitionDuration: TD, captions: wordCues, captionStyle: "classic", captionAnimation: "fade", captionFont: "archivo" },
+      io2
+    );
+    const fcText = p.passes[0].filterFiles[0].text;
+    expect(fcText).toContain("drawtext");
+    expect(fcText).toContain("fontfile=font-archivo.ttf");
+    expect(fcText).not.toContain("ass=");
+  });
+
+  it("server buildCaptionASS mirrors lib (karaoke/pop/typewriter)", async () => {
+    const m = await import("./captions.js");
+    expect(m.isWordAnimation("typewriter")).toBe(true);
+    const ass = m.buildCaptionASS(wordCues, "classic", "classic", 1280, 720, "md", 0, 0, "pop");
+    expect(ass).toContain("\\t(0,180,\\fscx125\\fscy125)");
+    expect(m.captionFont("archivo").file).toBe("font-archivo.ttf");
+  });
+});
