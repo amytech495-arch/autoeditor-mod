@@ -1494,3 +1494,6 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 /* Owner credit in the projects footer. */
 .ph__owner { display: flex; align-items: center; gap: 8px; justify-content: center; }
 .ph__owner-pic { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+
+.cap-replace--danger { color: #ff6b6b; }
+.cap-replace--danger:hover { text-decoration: underline; }
