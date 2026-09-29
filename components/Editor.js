@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Timeline from "./Timeline";
 import CaptionPanel from "./CaptionPanel";
+import LogoEditor from "./LogoEditor";
 import {
   TRANSITION_LIST, transitionOf,
   MIN_TRANSITION_DURATION, MAX_TRANSITION_DURATION,
@@ -137,7 +138,7 @@ export default function Editor({
   captionAnimation, setCaptionAnimation,
   captionMode, setCaptionMode, pickCaptionPreset,
   captionName, captionError, onCaptionFile,
-  onTranscribe, transcribeStatus, audioFile,
+  onTranscribe, transcribeStatus, audioFile, onDeleteCaptions,
   syncOn, setSyncOn, syncStatus, syncAligned,
   bgClips = [], selectedBg, uploadBg, addBgClip, moveBgClip, setBgVolume, updateBgClip, removeBgClip,
   bgOpen, setBgOpen,
@@ -167,7 +168,7 @@ export default function Editor({
   logoSize, setLogoSize,
   logoOpacity, setLogoOpacity,
   logoEnabled, setLogoEnabled,
-  onLogo,
+  onLogo, onLogoEdit,
   textOverlays = [], addTextOverlay, updateTextOverlay, removeTextOverlay, replaceTextOverlays,
 }) {
   const canvasRef = useRef(null);
@@ -198,6 +199,7 @@ export default function Editor({
   const watermarkInputRef = useRef(null);
   const logoImgRef = useRef(null);     // corner-logo image element for preview
   const logoInputRef = useRef(null);
+  const [logoEditOpen, setLogoEditOpen] = useState(false);
   const rafRef = useRef(0);
   const fileInputRef = useRef(null);
   const capInputRef = useRef(null);
@@ -1776,6 +1778,7 @@ export default function Editor({
           captionFontScale={captionFontScale} setCaptionFontScale={setCaptionFontScale}
           captionName={captionName} captionError={captionError}
           onTranscribe={onTranscribe} transcribeStatus={transcribeStatus} capInputRef={capInputRef}
+          onDeleteCaptions={onDeleteCaptions}
           syncOn={syncOn} setSyncOn={setSyncOn} syncStatus={syncStatus} syncAligned={syncAligned}
         />
 
@@ -2188,6 +2191,16 @@ export default function Editor({
             {logoEnabled && (
               <button
                 type="button"
+                className="mbtn"
+                onClick={() => setLogoEditOpen(true)}
+                style={{ padding: "6px 12px" }}
+              >
+                ✂ Edit
+              </button>
+            )}
+            {logoEnabled && (
+              <button
+                type="button"
                 className="mbtn mbtn--danger"
                 onClick={() => {
                   setLogoEnabled(false);
@@ -2241,6 +2254,13 @@ export default function Editor({
             </div>
           )}
         </div>
+        {logoEditOpen && logoUrl && (
+          <LogoEditor
+            src={logoUrl}
+            onClose={() => setLogoEditOpen(false)}
+            onApply={(blob) => { setLogoEditOpen(false); onLogoEdit && onLogoEdit(blob); }}
+          />
+        )}
         {/* --- Text overlays --- */}
         <div className="panel video-overlay">
           <h2 className="panel__h">Text overlays</h2>
