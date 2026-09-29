@@ -452,6 +452,16 @@ export default function Home() {
           return { file: f, seconds: parseTimestampName(f.name), img };
         })
       );
+      // Auto-set the frame ratio from the first imported media's orientation
+      // (only while on the import tray — a manual editor choice is never clobbered).
+      if (!built && loaded.length) {
+        const first = loaded.find((l) => l.img && (l.img.naturalHeight || l.img.videoHeight));
+        if (first) {
+          const w = first.img.naturalWidth || first.img.videoWidth || 0;
+          const h = first.img.naturalHeight || first.img.videoHeight || 0;
+          setAspect(w && h && h > w ? "9:16" : "16:9");
+        }
+      }
       commitDoc((d) => {
       const next = d.slots.map((s) => ({ ...s }));
       for (const { file, seconds, img } of loaded) {
@@ -467,7 +477,7 @@ export default function Home() {
     } finally {
       setImporting(null);
     }
-  }, [commitDoc]);
+  }, [commitDoc, built, setAspect]);
 
   // Swap the image/video in one slot, keeping its timestamp.
   const replaceImage = useCallback(async (id, file) => {

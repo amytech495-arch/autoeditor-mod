@@ -1095,6 +1095,22 @@ export default function Editor({
                   {active.gap ? "empty gap" : `image ${activeIndex} / ${imageCount}`}
                 </div>
               )}
+              <div className="ratios" role="group" aria-label="Frame ratio">
+                <button
+                  type="button"
+                  className={aspect === "16:9" ? "ratio is-on" : "ratio"}
+                  onClick={() => setAspect("16:9")}
+                  data-tip="Export at 16:9 — landscape (1920×1080)"
+                  aria-pressed={aspect === "16:9"}
+                >16:9</button>
+                <button
+                  type="button"
+                  className={aspect === "9:16" ? "ratio is-on" : "ratio"}
+                  onClick={() => setAspect("9:16")}
+                  data-tip="Export at 9:16 — portrait (1080×1920)"
+                  aria-pressed={aspect === "9:16"}
+                >9:16</button>
+              </div>
             </div>
             <div className="transport__center">
               {timeDraft == null ? (
