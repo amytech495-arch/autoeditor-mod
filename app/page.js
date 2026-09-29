@@ -306,6 +306,16 @@ export default function Home() {
     setLogoEnabled(true);
   }, []);
 
+  // Replace the logo with an edited version (crop/rotate/circle from LogoEditor).
+  const onLogoEdit = useCallback((blob) => {
+    if (!blob) return;
+    if (logoUrl) { try { URL.revokeObjectURL(logoUrl); } catch (_) {} }
+    const file = new File([blob], "logo-edited.png", { type: "image/png" });
+    setLogoFile(file);
+    setLogoUrl(URL.createObjectURL(file));
+    setLogoEnabled(true);
+  }, [logoUrl]);
+
   // --- Background music (BG lane) -------------------------------------------
   // Pick a file: read its duration + a dense waveform, then hold it as the pending
   // clip. A click on the BG lane drops a copy where the pointer is.
@@ -558,6 +568,15 @@ export default function Home() {
     () => (captionMode === "word" ? toWordCues(captionCues) : captionCues),
     [captionMode, captionCues]
   );
+
+  // Delete all captions (uploaded SRT or auto-transcription).
+  const deleteCaptions = useCallback(() => {
+    setCaptionRaw(null); setCaptionName(null); setCaptionsOn(false);
+    setTranscribedCues(null);
+    setTranscribeStatus({ busy: false, progress: 0, error: null });
+    setSyncOn(false); setSyncOnsets(null);
+    setSyncStatus({ decoding: false, error: null, detected: 0, total: 0 });
+  }, []);
 
   // Auto-transcribe the project audio with whisper → word-timed caption cues.
   // Same backend origin convention as lib/serverRender.js (NEXT_PUBLIC_RENDER_URL).
@@ -1612,6 +1631,7 @@ export default function Home() {
           captionLineHeight={captionLineHeight} setCaptionLineHeight={setCaptionLineHeight}
           captionFontScale={captionFontScale} setCaptionFontScale={setCaptionFontScale}
           onTranscribe={onTranscribe} transcribeStatus={transcribeStatus} audioFile={audioFile}
+          onDeleteCaptions={deleteCaptions}
           captionName={captionName} captionError={captionError} onCaptionFile={onCaptionFile}
           syncOn={syncOn} setSyncOn={setSyncOn}
           syncStatus={syncStatus} syncAligned={syncAligned}
@@ -1647,7 +1667,7 @@ export default function Home() {
           logoSize={logoSize} setLogoSize={setLogoSize}
           logoOpacity={logoOpacity} setLogoOpacity={setLogoOpacity}
           logoEnabled={logoEnabled} setLogoEnabled={setLogoEnabled}
-          onLogo={onLogo}
+          onLogo={onLogo} onLogoEdit={onLogoEdit}
           textOverlays={textOverlays}
           addTextOverlay={addTextOverlay}
           updateTextOverlay={updateTextOverlay}
