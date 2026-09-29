@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 import {
   CAPTION_STYLE_LIST, CAPTION_FONTS, CAPTION_SIZES, CAPTION_ANIMATION_LIST,
   captionLineHeightDefault,
@@ -19,13 +20,15 @@ export default function CaptionPanel({
   captionLineHeight, setCaptionLineHeight,
   captionFontScale, setCaptionFontScale,
   captionName, captionError,
-  onTranscribe, transcribeStatus, capInputRef,
+  onTranscribe, transcribeStatus, capInputRef, onDeleteCaptions,
   syncOn, setSyncOn, syncStatus, syncAligned,
 }) {
   // The template whose style/font/animation currently match (null = custom).
   const activePreset = CAPTION_PRESETS.find((p) =>
     p.style === captionStyle && p.font === captionFont && p.animation === captionAnimation
   ) || null;
+  // "Replace" choice dialog: auto-transcribe or upload an SRT/VTT file.
+  const [replaceOpen, setReplaceOpen] = React.useState(false);
   return (
     <div
       className={`side__group${sideTab === "captions" ? "" : " is-off"}`}
@@ -84,9 +87,42 @@ export default function CaptionPanel({
             <span className="cap-meta">
               <span className="cap-meta__name">{captionName || "captions"}</span>
               {captionCues.length} lines ·{" "}
-              <button type="button" className="cap-replace" onClick={() => capInputRef.current && capInputRef.current.click()}>replace</button>
+              <button type="button" className="cap-replace" onClick={() => setReplaceOpen(true)}>replace</button>
+              {" · "}
+              <button
+                type="button" className="cap-replace cap-replace--danger"
+                onClick={() => { if (window.confirm("Delete all captions?")) onDeleteCaptions && onDeleteCaptions(); }}
+              >delete</button>
             </span>
           </div>
+          {replaceOpen && (
+            <div className="modal" role="dialog" aria-modal="true" onClick={() => setReplaceOpen(false)}>
+              <div className="modal__card" style={{ maxWidth: 320 }} onClick={(e) => e.stopPropagation()}>
+                <div className="modal__head">
+                  <span className="modal__title">Replace captions</span>
+                  <button className="modal__x" onClick={() => setReplaceOpen(false)} aria-label="Close">✕</button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                  <button
+                    type="button" className="mbtn mbtn--primary"
+                    disabled={!!(transcribeStatus && transcribeStatus.busy)}
+                    onClick={() => { setReplaceOpen(false); onTranscribe && onTranscribe(); }}
+                  >
+                    <span className="cap-upload__i">🎙</span>{" "}
+                    {transcribeStatus && transcribeStatus.busy
+                      ? `Transcribing… ${Math.round((transcribeStatus.progress || 0) * 100)}%`
+                      : "Auto-transcribe audio"}
+                  </button>
+                  <button
+                    type="button" className="mbtn"
+                    onClick={() => { setReplaceOpen(false); capInputRef.current && capInputRef.current.click(); }}
+                  >
+                    <span className="cap-upload__i">⤒</span> Upload SRT / VTT file
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="cap-bar" style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
             <button
