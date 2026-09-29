@@ -1490,3 +1490,7 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 .cap-template__preview[data-style="yellow"] { color: #ffd400; text-shadow: -1px 0 0 #000, 1px 0 0 #000, 0 -1px 0 #000, 0 1px 0 #000; }
 .cap-template__preview[data-style="shadow"] { color: #fff; text-shadow: 2px 2px 0 rgba(0,0,0,.85); }
 .cap-template__label { font-size: 10.5px; line-height: 1.15; text-align: center; opacity: .85; }
+
+/* Owner credit in the projects footer. */
+.ph__owner { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.ph__owner-pic { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
