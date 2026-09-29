@@ -7,7 +7,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import ffmpegStatic from "ffmpeg-static";
 import { xfadeName, MIN_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from "./transitions.js";
-import { buildCaptionBurn, buildTextOverlayBurn, CAPTION_FONT } from "./captions.js";
+import { buildCaptionBurn, buildCaptionASS, isWordAnimation, CAPTION_FONTS, buildTextOverlayBurn, CAPTION_FONT } from "./captions.js";
 import { voiceFxFilterString } from "../lib/voiceFx.js";
 
 // Crash-safe module dir: import.meta.url works in ESM (dev); in the bundled/SEA
@@ -26,6 +26,10 @@ const FFMPEG = process.env.FFMPEG_PATH
   || (existsSync(nextToExe(FF_BIN)) ? nextToExe(FF_BIN) : ffmpegStatic);
 const FONT_SRC = process.env.CAPTION_FONT_PATH
   || (existsSync(nextToExe("caption.ttf")) ? nextToExe("caption.ttf") : path.join(MODULE_DIR, "assets", "caption.ttf"));
+// Extra caption typefaces (CAPTION_FONTS in captions.js) live in assets/fonts/;
+// each is copied into the job dir under its `file` name so fontfile=/ass can use it.
+const extraFontSrc = (file) =>
+  (existsSync(nextToExe(file)) ? nextToExe(file) : path.join(MODULE_DIR, "assets", "fonts", file));
 
 // ---------- pure: build the ffmpeg argument array ----------
 
@@ -228,7 +232,7 @@ function transitionDur(transitions, transitionDuration, k, frame) {
 // xfade chain) for a list of clips whose `.start` is relative to THIS chain's t=0.
 // Returns { inputs, parts, last } — `last` is the composited video label. Shared by
 // the single-pass render and by each segment of a segmented render.
-function buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, speeds }) {
+function buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, speeds }) {
   const n = clips.length;
   const frame = 1 / fps;
   const tdur = (k) => transitionDur(transitions, transitionDuration, k, frame);
@@ -277,7 +281,7 @@ function sfxClipFilters(s) {
   return out;
 }
 
-function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.08, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, logoName = null, logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false, sfxClips = [], voiceFx, voiceLevel = 1 }, filterFiles) {
+function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, logoName = null, logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false, sfxClips = [], voiceFx, voiceLevel = 1 }, filterFiles) {
   const n = clips.length;
   const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds });
   let last = vEnd;
@@ -439,8 +443,8 @@ function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fa
 // Chunk boundaries are placed at CUT points so the copy-concat has no visible seam; if no
 // cut appears within a hard cap, a boundary is forced (that one crossfade becomes a cut).
 function buildSegmentedPlan(spec, io) {
-  const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.08, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
-    captions, captionStyle = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none",
+  const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.2, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
+    captions, captionStyle = "classic", captionFont = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none",
     textOverlays,
     voiceFx, voiceLevel = 1,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
@@ -495,9 +499,17 @@ function buildSegmentedPlan(spec, io) {
         segCues.push({ ...c, start: Math.max(0, c.start - A), end: Math.min(segDur, c.end - A) });
       }
       if (segCues.length) {
-        const { filter, files } = buildCaptionBurn(segCues, captionStyle, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation, `s${s}_`);
-        parts.push(`[${last}]${filter}[vcap]`); last = "vcap";
-        for (const f of files) capFiles.push(f);
+        if (isWordAnimation(captionAnimation)) {
+          // Word-level animations burn via libass (one .ass per segment).
+          const assName = `cap-s${s}.ass`;
+          const ass = buildCaptionASS(segCues, captionStyle, captionFont, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation);
+          capFiles.push({ name: assName, text: ass });
+          parts.push(`[${last}]ass=${assName}:fontsdir=.[vcap]`); last = "vcap";
+        } else {
+          const { filter, files } = buildCaptionBurn(segCues, captionStyle, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionFont, `s${s}_`);
+          parts.push(`[${last}]${filter}[vcap]`); last = "vcap";
+          for (const f of files) capFiles.push(f);
+        }
       }
     }
     // Per-segment text overlays, burned like captions (rebased to segment time).
@@ -563,7 +575,7 @@ function buildSegmentedPlan(spec, io) {
 // spec: { clips, width, height, fps, transitions, transitionDuration, fadeIn, fadeOut }
 // io:   { paths: string[] (per-clip basenames), audioName, capChain, encoder }
 export function buildRenderPlan(spec, io) {
-  const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.08, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
+  const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.2, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
     voiceFx, voiceLevel = 1,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false,
@@ -667,7 +679,7 @@ function makeBlack(dir, width, height) {
 // into `dir` by multer (image fields keyed by clip name, plus "audio").
 // Returns { paths, audioName, capChain } for buildRenderPlan.
 export async function writeInputs(dir, spec, fileMap) {
-  const { clips, width, height, captions, captionStyle = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none", textOverlays } = spec;
+  const { clips, width, height, captions, captionStyle = "classic", captionFont = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none", textOverlays } = spec;
 
   const audioName = fileMap["audio"];
   const overlayName = fileMap["overlay"] || null;
@@ -688,12 +700,25 @@ export async function writeInputs(dir, spec, fileMap) {
 
   let capChain = "", textChain = "";
   if (Array.isArray(captions) && captions.length || Array.isArray(textOverlays) && textOverlays.length) {
-    await fs.copyFile(FONT_SRC, path.join(dir, CAPTION_FONT));
+    // Copy every bundled caption typeface into the job dir (drawtext fontfile=
+    // and the ass filter's fontsdir= both resolve them by file name).
+    for (const f of CAPTION_FONTS) {
+      const src = f.file === CAPTION_FONT ? FONT_SRC : extraFontSrc(f.file);
+      try { await fs.copyFile(src, path.join(dir, f.file)); }
+      catch { /* an optional extra font may be missing; classic always exists */ }
+    }
   }
   if (Array.isArray(captions) && captions.length) {
-    const { filter, files } = buildCaptionBurn(captions, captionStyle, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation);
-    for (const f of files) await fs.writeFile(path.join(dir, f.name), f.text);
-    capChain = filter;
+    if (isWordAnimation(captionAnimation)) {
+      // Word-level animations burn via libass (drawtext can't sweep per word).
+      const ass = buildCaptionASS(captions, captionStyle, captionFont, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation);
+      await fs.writeFile(path.join(dir, "cap.ass"), ass);
+      capChain = "ass=cap.ass:fontsdir=.";
+    } else {
+      const { filter, files } = buildCaptionBurn(captions, captionStyle, width, height, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionFont);
+      for (const f of files) await fs.writeFile(path.join(dir, f.name), f.text);
+      capChain = filter;
+    }
   }
   if (Array.isArray(textOverlays) && textOverlays.length) {
     const { filter, files } = buildTextOverlayBurn(textOverlays, width, height);

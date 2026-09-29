@@ -271,6 +271,67 @@ app.post("/render/:id/cancel", (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- auto captions: transcribe an audio file with whisper (word timings) ----
+// POST multipart with an "audio" field. Streams SSE progress events, then a
+// final { done, cues } (or { error }). Cues: [{start, end, text, words:[{w,start,end}]}].
+// Needs Python + faster-whisper; WHISPER_PYTHON and WHISPER_MODEL override the
+// interpreter and model ("tiny" default, or a local model dir). If whisper is
+// missing the stream ends with { error: "whisper-missing" } and setup notes.
+const transcribeUpload = multer({ dest: TMP });
+app.post("/api/transcribe", newJob, transcribeUpload.single("audio"), (req, res) => {
+  const finish = (payload) => {
+    rmrf(req.jobDir);
+    try { if (req.file) fssync.unlinkSync(req.file.path); } catch { /* ignore */ }
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    res.end();
+  };
+  if (!req.file) { res.status(400); return finish({ error: "no-audio" }); }
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.flushHeaders();
+
+  const py = process.env.WHISPER_PYTHON || "python3";
+  const script = path.join(MODULE_DIR, "transcribe.py");
+  let proc;
+  try {
+    proc = spawn(py, [script, req.file.path]);
+  } catch (e) {
+    return finish({ error: "whisper-missing", detail: String(e.message || e) });
+  }
+  let out = "";
+  proc.stdout.on("data", (d) => { out += d.toString(); });
+  proc.stderr.on("data", (d) => {
+    for (const line of String(d).split("\n")) {
+      const m = line.match(/PROGRESS:([\d.]+)/);
+      if (m) res.write(`data: ${JSON.stringify({ progress: Math.min(1, +m[1]) })}\n\n`);
+    }
+  });
+  proc.on("error", () => finish({
+    error: "whisper-missing",
+    detail: "Could not start Python. Install Python 3 and faster-whisper (`pip install faster-whisper`), or set WHISPER_PYTHON.",
+  }));
+  proc.on("close", (code) => {
+    const m = out.match(/RESULT:(\{[\s\S]*\})/);
+    if (m) {
+      try {
+        const r = JSON.parse(m[1]);
+        if (r.error === "whisper-missing") {
+          return finish({
+            error: "whisper-missing",
+            detail: "faster-whisper is not installed for " + py + ". Install it with `pip install faster-whisper` (model downloads on first run), or set WHISPER_PYTHON / WHISPER_MODEL.",
+          });
+        }
+        return finish({ done: true, cues: r.cues || [], language: r.language || "" });
+      } catch { /* fall through to generic error */ }
+    }
+    finish({ error: "transcribe-failed", detail: `transcriber exited with code ${code}` });
+  });
+  req.on("close", () => { try { proc.kill("SIGKILL"); } catch { /* gone */ } });
+});
+
 // Serve the built static UI (if present) after the API routes, so the app is
 // reachable at the same origin as the render endpoints.
 if (fssync.existsSync(FRONTEND_DIR)) app.use(express.static(FRONTEND_DIR));
@@ -298,6 +359,8 @@ app.listen(PORT, () => {
   console.log(`AutoEditor running on http://localhost:${PORT}`);
   if (OUTPUT_DIR) console.log(`Finished videos are also saved to: ${OUTPUT_DIR}`);
   console.log("Keep this window open. Close it (or press Ctrl+C) to stop the app.");
+  // Fetch any missing caption typefaces in the background (non-blocking).
+  import("./fonts.js").then((m) => m.ensureCaptionFonts().catch(() => {}));
   // Auto-open when launched via start.bat (OPEN_BROWSER=1) or by double-clicking
   // the packaged exe. OPEN_BROWSER=0 disables it.
   const wantOpen = process.env.OPEN_BROWSER === "0"
