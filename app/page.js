@@ -1504,6 +1504,7 @@ export default function Home() {
           onRender={onRender} onCancel={onCancel} busy={busy} progress={progress}
           outUrl={outUrl} error={error} warnings={warnings}
           replaceImage={replaceImage} removeImage={removeImage} fillGap={fillGap}
+          onAddFiles={addImages}
           resizeBoundary={resizeBoundary}
           transitionsByName={transitionsByName} transitionDuration={transitionDuration}
           setTransition={setTransition} applyTransitionAll={applyTransitionAll}

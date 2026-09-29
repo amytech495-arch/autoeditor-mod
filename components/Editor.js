@@ -121,7 +121,7 @@ export default function Editor({
   renderQuality = "full", setRenderQuality, renderDims,
   onRender, onCancel, busy, progress, outUrl, error, warnings,
   onWebCodecsTest, onWebCodecsCancel, wcBusy, wcProgress, wcPhase, wcAvailable, serverAvailable, wcEnabled, setWcEnabled,
-  replaceImage, removeImage, fillGap, resizeBoundary,
+  replaceImage, removeImage, fillGap, onAddFiles, resizeBoundary,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
   fadeIn, setFadeIn, fadeOut, setFadeOut,
   motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
@@ -1227,6 +1227,7 @@ export default function Editor({
           onScrubEnd={onScrubEnd}
           onOpen={openInspect}
           onAdd={askAdd}
+          onAddFiles={onAddFiles}
           onResizeBoundary={resizeBoundary}
           trimEnd={trimEnd}
           onTrimChange={setTrimEnd}

@@ -58,6 +58,27 @@ function matchesAccept(files, accept) {
   });
 }
 
+// Shared drop collector for every file target (the Dropzone buttons and the
+// timeline's video lane). Recursively expands dropped folders, filters against
+// an accept list, and resolves to the matching File list. webkitGetAsEntry must
+// be called synchronously during the drop, so the entries are read upfront.
+export async function collectDropFiles(e, accept) {
+  const dt = e.dataTransfer;
+  if (!dt) return [];
+  if (dt.items && dt.items.length) {
+    const entries = Array.from(dt.items)
+      .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+      .filter(Boolean);
+    if (entries.length) {
+      const out = [];
+      await Promise.all(entries.map((en) => readEntry(en, out)));
+      return matchesAccept(out, accept);
+    }
+  }
+  if (dt.files && dt.files.length) return matchesAccept(dt.files, accept);
+  return [];
+}
+
 export default function Dropzone({
   accept, multiple, onFiles, compact,
   icon, title, hint, filled, filledLabel,
@@ -76,26 +97,9 @@ export default function Dropzone({
   const onDrop = useCallback(async (e) => {
     e.preventDefault();
     setOver(false);
-    const dt = e.dataTransfer;
-    if (!dt) return;
-
-    // Folder-aware path (only for multi-file zones like images). webkitGetAsEntry
-    // must be called synchronously during the drop, so grab the entries first.
-    if (multiple && dt.items && dt.items.length) {
-      const entries = Array.from(dt.items)
-        .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
-        .filter(Boolean);
-      if (entries.length) {
-        const out = [];
-        await Promise.all(entries.map((en) => readEntry(en, out)));
-        const files = matchesAccept(out, accept);
-        if (files.length) onFiles(files);
-        return;
-      }
-    }
-
-    if (dt.files && dt.files.length) onFiles(matchesAccept(dt.files, accept));
-  }, [onFiles, multiple, accept]);
+    const files = await collectDropFiles(e, accept);
+    if (files.length) onFiles(files);
+  }, [onFiles, accept]);
 
   const cls = ["dz"];
   if (compact) cls.push("dz--compact");

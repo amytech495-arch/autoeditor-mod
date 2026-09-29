@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
 import { transitionOf } from "../lib/transitions";
+import { collectDropFiles } from "./Dropzone";
 
 function label(t) {
   const m = Math.floor(t / 60);
@@ -56,7 +57,7 @@ function Waveform({ peaks, style }) {
 export default function Timeline({
   clips, imageEls, duration, time, activeName, badClips,
   transitionsByName, motionByName, selectedName, onSelect,
-  onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onResizeBoundary,
+  onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onAddFiles, onResizeBoundary,
   trimEnd, onTrimChange,
   zoom = 1,
   scrollRef,
@@ -68,6 +69,18 @@ export default function Timeline({
   const [hover, setHover] = useState(null); // time under the mouse, for the hover indicator
   const [pop, setPop] = useState(null); // one-shot time-chip pop on click, { t, id }
   const popIdRef = useRef(0);
+  const [over, setOver] = useState(false); // a file is being dragged over the video lane
+
+  // Accept a dropped image/video (or folder) straight onto the video lane: the
+  // files are re-collected exactly like the import buttons and handed to the
+  // same addImages pipeline, which places them by their timestamped names.
+  const onDropFiles = useCallback(async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOver(false);
+    const files = await collectDropFiles(e, "image/*,video/*");
+    if (files.length && onAddFiles) onAddFiles(files);
+  }, [onAddFiles]);
 
   const onHoverMove = useCallback((e) => {
     const el = trackRef.current;
@@ -373,7 +386,12 @@ export default function Timeline({
         </div>
 
         <div className="tl__track" ref={trackRef}>
-          <div className="tl__lane tl__lane--video">
+          <div
+            className={["tl__lane", "tl__lane--video", over ? "is-over" : ""].filter(Boolean).join(" ")}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setOver(true); }}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
+            onDrop={onDropFiles}
+          >
             {clips.map((c, i) => {
               let cStart = c.start, cDur = c.duration;
               if (drag) {
