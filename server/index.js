@@ -293,7 +293,8 @@ app.post("/api/transcribe", newJob, transcribeUpload.single("audio"), (req, res)
   });
   res.flushHeaders();
 
-  const py = process.env.WHISPER_PYTHON || "python3";
+  // Windows calls it "python" (or the "py" launcher); macOS/Linux use "python3".
+  const py = process.env.WHISPER_PYTHON || (process.platform === "win32" ? "python" : "python3");
   const script = path.join(MODULE_DIR, "transcribe.py");
   let proc;
   try {
@@ -326,6 +327,13 @@ app.post("/api/transcribe", newJob, transcribeUpload.single("audio"), (req, res)
         }
         return finish({ done: true, cues: r.cues || [], language: r.language || "" });
       } catch { /* fall through to generic error */ }
+    }
+    // 9009 = Windows "command not found": Python isn't installed or not on PATH.
+    if (code === 9009) {
+      return finish({
+        error: "whisper-missing",
+        detail: "Python was not found on your system (tried \"" + py + "\"). Install Python 3 from python.org (tick \"Add python.exe to PATH\" during setup), then run `pip install faster-whisper`. Or set the WHISPER_PYTHON environment variable to your Python.",
+      });
     }
     finish({ error: "transcribe-failed", detail: `transcriber exited with code ${code}` });
   });
