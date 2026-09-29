@@ -15,3 +15,9 @@ soundeffects/
 public/logo1.svg
 
 .DS_Store
+
+# caption typefaces (auto-downloaded by postinstall / server startup)
+public/fonts/font-anton.ttf
+public/fonts/font-archivo.ttf
+server/assets/fonts/font-anton.ttf
+server/assets/fonts/font-archivo.ttf
