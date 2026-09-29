@@ -23,28 +23,6 @@ function clock(sec) {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-function GitHubLink({ href, title, label, className = "" }) {
-  return (
-    <a className={`dc-link ${className}`} href={href} target="_blank" rel="noopener noreferrer" title={title}>
-      <svg className="dc-link__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-        <path d="M12 0C5.37 0 0 5.501 0 12.303c0 5.433 3.438 10.043 8.205 11.671.6.113.82-.267.82-.593 0-.293-.01-1.066-.016-2.093-3.338.743-4.042-1.651-4.042-1.651-.546-1.421-1.333-1.8-1.333-1.8-1.089-.763.083-.747.083-.747 1.205.087 1.84 1.267 1.84 1.267 1.07 1.88 2.808 1.336 3.493 1.022.109-.795.419-1.336.761-1.643-2.665-.31-5.467-1.366-5.467-6.08 0-1.343.469-2.441 1.237-3.302-.124-.31-.536-1.56.117-3.253 0 0 1.008-.33 3.301 1.261a11.16 11.16 0 0 1 3.006-.414c1.02.005 2.047.139 3.006.414 2.29-1.591 3.297-1.261 3.297-1.261.653 1.693.243 2.943.119 3.253.77.861 1.235 1.959 1.235 3.302 0 4.721-2.804 5.766-5.477 6.07.43.381.815 1.13.815 2.279 0 1.645-.015 2.971-.015 3.375 0 .328.218.71.826.59C20.565 22.35 24 17.739 24 12.303 24 5.501 18.63 0 12 0z" />
-      </svg>
-      <span className="dc-link__text">{label}</span>
-    </a>
-  );
-}
-
-function YouTubeLink({ href, title, label, className = "" }) {
-  return (
-    <a className={`dc-link ${className}`} href={href} target="_blank" rel="noopener noreferrer" title={title}>
-      <svg className="dc-link__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-      </svg>
-      <span className="dc-link__text">{label}</span>
-    </a>
-  );
-}
-
 export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDelete, storage }) {
   const [menuId, setMenuId] = useState(null); // project id with its ⋮ menu open
 
@@ -136,11 +114,7 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
         )}
 
         <footer className="ph__foot">
-          <div className="ph__foot-links">
-            <YouTubeLink className="ph__yt" href="https://www.youtube.com/@banong.gangOG" title="BanongGang on YouTube" label="visit channel" />
-            <GitHubLink className="ph__gh" href="https://github.com/banonggang" title="BanongGang on GitHub" label="BanongGang" />
-          </div>
-          <p className="ph__foot-note">Modified <a href="https://www.youtube.com/@TryAIToday" target="_blank" rel="noopener noreferrer" className="ph__foot-link">TryAIToday</a> AutoEditor</p>
+          <p className="ph__foot-note">Owned by Frank Nwabenu</p>
         </footer>
       </div>
     </main>
