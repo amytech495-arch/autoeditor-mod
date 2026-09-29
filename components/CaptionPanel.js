@@ -3,6 +3,7 @@ import {
   CAPTION_STYLE_LIST, CAPTION_FONTS, CAPTION_SIZES, CAPTION_ANIMATION_LIST,
   captionLineHeightDefault,
 } from "../lib/captions";
+import { CAPTION_PRESETS } from "../lib/captionPresets";
 
 // Captions sidebar tab, extracted from Editor.js. Props are the caption state
 // and setters owned by app/page.js (passed through Editor).
@@ -12,6 +13,8 @@ export default function CaptionPanel({
   captionStyle, setCaptionStyle,
   captionFont, setCaptionFont,
   captionAnimation, setCaptionAnimation,
+  captionMode, setCaptionMode,
+  pickCaptionPreset,
   captionSize, setCaptionSize,
   captionLineHeight, setCaptionLineHeight,
   captionFontScale, setCaptionFontScale,
@@ -19,6 +22,10 @@ export default function CaptionPanel({
   onTranscribe, transcribeStatus, capInputRef,
   syncOn, setSyncOn, syncStatus, syncAligned,
 }) {
+  // The template whose style/font/animation currently match (null = custom).
+  const activePreset = CAPTION_PRESETS.find((p) =>
+    p.style === captionStyle && p.font === captionFont && p.animation === captionAnimation
+  ) || null;
   return (
     <div
       className={`side__group${sideTab === "captions" ? "" : " is-off"}`}
@@ -108,7 +115,41 @@ export default function CaptionPanel({
           )}
 
           <div className="cap-body" aria-disabled={!captionsOn}>
-            <div className="mini-h">Style</div>
+            <div className="mini-h">Templates</div>
+            <div className="cap-templates">
+              {CAPTION_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`cap-template${activePreset && activePreset.id === p.id ? " is-on" : ""}`}
+                  onClick={() => pickCaptionPreset && pickCaptionPreset(p.id)}
+                  title={p.desc}
+                >
+                  <span className="cap-template__preview" data-style={p.style}>Ag</span>
+                  <span className="cap-template__label">{p.label}</span>
+                </button>
+              ))}
+            </div>
+            {activePreset && (
+              <div className="cap-hint" style={{ marginTop: 4 }}>{activePreset.desc}</div>
+            )}
+
+            <div className="mini-h" style={{ marginTop: 12 }}>Display</div>
+            <div className="seg">
+              {[["sentence", "Full sentences"], ["word", "Word by word"]].map(([id, lbl]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={captionMode === id ? "is-on" : ""}
+                  onClick={() => setCaptionMode && setCaptionMode(id)}
+                  title={id === "word"
+                    ? "CapCut-style: 1–4 words on screen at a time, each highlighting as spoken"
+                    : "Classic subtitles: full caption lines"}
+                >{lbl}</button>
+              ))}
+            </div>
+
+            <div className="mini-h" style={{ marginTop: 12 }}>Style</div>
             <div className="transitions__chips">
               {CAPTION_STYLE_LIST.map((st) => (
                 <button
