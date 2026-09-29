@@ -10,7 +10,8 @@ import { getWaveformPeaks, waveBucketCount } from "../lib/waveform";
 import { renderVideo, cancelRender, getActiveRender, reconnectRender, probeBackend } from "../lib/serverRender";
 import { renderWebCodecs, webCodecsCanRender, pickRenderProfile, startKeepAwake, crfTargetBitrate } from "../lib/webcodecsRender";
 import { DEFAULT_TRANSITION_DURATION, mixTransitions } from "../lib/transitions";
-import { parseTranscript } from "../lib/captions";
+import { parseTranscript, toWordCues } from "../lib/captions";
+import { applyCaptionPreset } from "../lib/captionPresets";
 import { makeTextOverlay, drawTextOverlays, textOverlayFontPx } from "../lib/textOverlay";
 import { sanitizeVoiceFx } from "../lib/voiceFx";
 import QuickTour from "../components/QuickTour";
@@ -216,6 +217,15 @@ export default function Home() {
   const [captionLineHeight, setCaptionLineHeight] = useState(null); // null = per-style default
   const [captionFontScale, setCaptionFontScale] = useState(null);   // null = use the size preset
   const [captionAnimation, setCaptionAnimation] = useState("none"); // caption entrance animation (preview == render)
+  // CapCut-style display: "sentence" = full lines (current), "word" = 1–4 words
+  // per cue, each popping/highlighting as spoken.
+  const [captionMode, setCaptionMode] = useState("sentence");
+  // Pick a template preset: applies its style/font/animation/size in one tap,
+  // and switches to word mode (templates read best word-by-word).
+  const pickCaptionPreset = useCallback((id) => {
+    applyCaptionPreset(id, { setCaptionStyle, setCaptionFont, setCaptionAnimation, setCaptionSize });
+    setCaptionMode("word");
+  }, [setCaptionStyle, setCaptionFont, setCaptionAnimation, setCaptionSize]);
   // Auto-transcribed cues (with per-word timings) — take precedence over an
   // uploaded transcript when present.
   const [transcribedCues, setTranscribedCues] = useState(null);
@@ -541,6 +551,13 @@ export default function Home() {
   // Auto-transcribed cues (with word timings) win over an uploaded transcript.
   const captionCues = transcribedCues && transcribedCues.length ? transcribedCues : captionParse.cues;
   const captionError = transcribeStatus.error || captionParse.error;
+  // Word mode re-chunks cues into CapCut-style 1–4 word groups for display and
+  // render. The sentence-level captionCues stay untouched for image↔narration
+  // sync, which needs full lines.
+  const renderCues = useMemo(
+    () => (captionMode === "word" ? toWordCues(captionCues) : captionCues),
+    [captionMode, captionCues]
+  );
 
   // Auto-transcribe the project audio with whisper → word-timed caption cues.
   // Same backend origin convention as lib/serverRender.js (NEXT_PUBLIC_RENDER_URL).
@@ -931,7 +948,7 @@ export default function Home() {
     v: 1,
     settings: { aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd },
     maps: { motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName },
-    captions: { captionRaw, captionName, captionsOn, captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation },
+    captions: { captionRaw, captionName, captionsOn, captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionMode },
     transitionsByName,
     slots: slots.map((s) => ({
       id: s.id, seconds: s.seconds, empty: !!s.empty,
@@ -953,7 +970,7 @@ export default function Home() {
     built,
   }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd,
       motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName,
-      captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
+      captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionMode,
       transitionsByName, slots, audioFile, bgClips, sfx, sfxUploads, sfxMaster, voiceFx, voiceLevel, built]);
 
   const saveCurrent = useCallback(async () => {
@@ -984,7 +1001,7 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [view, currentProject, loadingProject, slots, transitionsByName, aspect, fps, renderQuality, transitionDuration,
       fadeIn, fadeOut, motionByName, motionAmount, trimByName, volumeByName, muteByName, fitByName, trimEnd,
-      captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
+      captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionMode,
       audioFile, bgClips, sfx, sfxUploads, sfxMaster, built]);
 
   const openProject = useCallback(async (id) => {
@@ -1078,6 +1095,7 @@ export default function Home() {
       setCaptionSize(cp.captionSize ?? "md"); setCaptionLineHeight(cp.captionLineHeight ?? null);
       setCaptionFontScale(cp.captionFontScale ?? null);
       setCaptionAnimation(cp.captionAnimation ?? "none");
+      setCaptionMode(cp.captionMode ?? "sentence");
       idRef.current = d.idCounter || newSlots.length;
       setBuilt(!!d.built);
     } finally { setLoadingProject(false); }
@@ -1159,7 +1177,7 @@ export default function Home() {
       const volumes = exportClips.map((c) =>
         Object.prototype.hasOwnProperty.call(videosByName, c.name)
           ? (muteByName[c.name] ? 0 : (volumeByName[c.name] == null ? 0.5 : volumeByName[c.name])) : 0);
-      const captions = captionsOn && captionCues.length ? captionCues : null;
+      const captions = captionsOn && renderCues.length ? renderCues : null;
       const blob = await renderVideo({
         clips: exportClips, imagesByName, videosByName, audioFile,
         width: renderDims.width, height: renderDims.height, fps,
@@ -1182,7 +1200,7 @@ export default function Home() {
     }
   }, [clips, exportDuration, imagesByName, videosByName, audioFile, renderDims, fps, transitionsByName, transitionDuration,
       motionByName, motionAmount, fxByName, fxAmount, trimByName, volumeByName, muteByName, fitByName, videoInfoByName, fadeIn, fadeOut,
-      captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, mixedAudio,
+      captionsOn, renderCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, mixedAudio,
       voiceFx, voiceLevel,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
@@ -1277,7 +1295,7 @@ export default function Home() {
           clips: exportClips, width: renderDims.width, height: renderDims.height, fps, bitrate, profile,
           transitions, transitionDuration, motions, motionAmount, fx, fxAmount, audioFile,
           videosByName, trims, speeds, volumes,
-          cues: captionsOn && captionCues.length ? captionCues : null,
+          cues: captionsOn && renderCues.length ? renderCues : null,
           captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation,
           sfx: mixedAudio,
           voiceFx,
@@ -1358,7 +1376,7 @@ export default function Home() {
     }
   }, [clips, exportDuration, transitionsByName, motionByName, fxByName, imagesByName, renderDims, fps, transitionDuration, motionAmount, fxAmount, audioFile,
       videosByName, videoInfoByName, fitByName, trimByName, volumeByName, muteByName, currentProject, flashDone, wcProfile,
-      captionsOn, captionCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
+      captionsOn, renderCues, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
       mixedAudio, voiceFx, voiceLevel,
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
@@ -1584,10 +1602,12 @@ export default function Home() {
           fitByName={fitByName} setFit={setFit}
           trimEnd={exportDuration} setTrimEnd={setTrimEnd} exportDuration={exportDuration}
           undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
-          captionCues={captionCues} captionsOn={captionsOn} setCaptionsOn={setCaptionsOn}
+          captionCues={renderCues} captionsOn={captionsOn} setCaptionsOn={setCaptionsOn}
           captionStyle={captionStyle} setCaptionStyle={setCaptionStyle}
           captionFont={captionFont} setCaptionFont={setCaptionFont}
           captionAnimation={captionAnimation} setCaptionAnimation={setCaptionAnimation}
+          captionMode={captionMode} setCaptionMode={setCaptionMode}
+          pickCaptionPreset={pickCaptionPreset}
           captionSize={captionSize} setCaptionSize={setCaptionSize}
           captionLineHeight={captionLineHeight} setCaptionLineHeight={setCaptionLineHeight}
           captionFontScale={captionFontScale} setCaptionFontScale={setCaptionFontScale}
