@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Timeline from "./Timeline";
+import CaptionPanel from "./CaptionPanel";
 import {
   TRANSITION_LIST, transitionOf,
   MIN_TRANSITION_DURATION, MAX_TRANSITION_DURATION,
@@ -8,8 +9,7 @@ import {
 } from "../lib/transitions";
 import { FX_LIST, fxOf, applyFx, fxSeed } from "../lib/imageEffects";
 import {
-  CAPTION_STYLE_LIST, CAPTION_SIZES, CAPTION_ANIMATION_LIST,
-  captionCueAt, drawCaption, captionFontPx, captionLineHeightDefault, drawWatermark, drawCornerLogo,
+  captionCueAt, drawCaption, captionFontPx, drawWatermark, drawCornerLogo,
 } from "../lib/captions";
 import { drawTextOverlays } from "../lib/textOverlay";
 import { SFX_LIB, previewSfx, stopSfxPreviews } from "../lib/sfx";
@@ -121,7 +121,7 @@ export default function Editor({
   renderQuality = "full", setRenderQuality, renderDims,
   onRender, onCancel, busy, progress, outUrl, error, warnings,
   onWebCodecsTest, onWebCodecsCancel, wcBusy, wcProgress, wcPhase, wcAvailable, serverAvailable, wcEnabled, setWcEnabled,
-  replaceImage, removeImage, fillGap, onAddFiles, resizeBoundary,
+  replaceImage, removeImage, fillGap, resizeBoundary,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
   fadeIn, setFadeIn, fadeOut, setFadeOut,
   motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
@@ -131,10 +131,12 @@ export default function Editor({
   trimEnd, setTrimEnd, exportDuration,
   undo, redo, canUndo, canRedo,
   captionCues, captionsOn, setCaptionsOn, captionStyle, setCaptionStyle,
+  captionFont, setCaptionFont,
   captionSize, setCaptionSize, captionLineHeight, setCaptionLineHeight,
   captionFontScale, setCaptionFontScale,
   captionAnimation, setCaptionAnimation,
   captionName, captionError, onCaptionFile,
+  onTranscribe, transcribeStatus, audioFile,
   syncOn, setSyncOn, syncStatus, syncAligned,
   bgClips = [], selectedBg, uploadBg, addBgClip, moveBgClip, setBgVolume, updateBgClip, removeBgClip,
   bgOpen, setBgOpen,
@@ -218,7 +220,7 @@ export default function Editor({
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0); // seconds spent in the current render
   const [selectedCut, setSelectedCut] = useState(null); // selected clip name (drives transition)
-  const [currentType, setCurrentType] = useState("fade");
+  const [currentType, setCurrentType] = useState("fadeblack");
   const [currentMotion, setCurrentMotion] = useState("dynamic"); // drives "Apply … to all" in Advanced Motion
   const [currentFx, setCurrentFx] = useState("none"); // drives "Apply … to all" in Image Effects
   const [warn4k, setWarn4k] = useState(false); // transient "4K is heavy" toast on quality select
@@ -696,7 +698,7 @@ export default function Editor({
       const clip = clips[idx];
       fx = (fxByName && fxByName[clip.name]) || "none";
       fxName = clip.name;
-      const type = idx > 0 ? (transitionsByName[clip.name] || "cut") : "cut";
+      const type = idx > 0 ? (transitionsByName[clip.name] || "fadeblack") : "cut";
       const tdur = type === "cut" ? 0 : Math.min(transitionDuration, clip.duration);
 
       if (idx > 0 && tdur > 0 && t < clip.start + tdur) {
@@ -774,7 +776,7 @@ export default function Editor({
     // Captions burn in before the fades, so the fade dims them too.
     if (captionsOn && captionCues && captionCues.length) {
       const cue = captionCueAt(captionCues, t);
-      if (cue) drawCaption(ctx, cue.text, W, H, captionStyle, captionFontPx(H, captionSize, captionFontScale), captionLineHeight, captionAnimation, t - cue.start, cue.end - cue.start);
+      if (cue) drawCaption(ctx, cue.text, W, H, captionStyle, captionFontPx(H, captionSize, captionFontScale), captionLineHeight, captionAnimation, t - cue.start, cue.end - cue.start, captionFont, cue);
     }
 
     // Timed text overlays (titles/labels) — same layer as WebCodecs + ffmpeg burn.
@@ -1055,7 +1057,7 @@ export default function Editor({
 
   const selectClip = useCallback((name) => {
     setSelectedCut(name);
-    setCurrentType(transitionsByName[name] || "cut");
+    setCurrentType(transitionsByName[name] || "fadeblack");
     setCurrentMotion(motionByName[name] || "dynamic");
     setCurrentFx(fxByName[name] || "none");
   }, [transitionsByName, motionByName, fxByName]);
@@ -1095,22 +1097,6 @@ export default function Editor({
                   {active.gap ? "empty gap" : `image ${activeIndex} / ${imageCount}`}
                 </div>
               )}
-              <div className="ratios" role="group" aria-label="Frame ratio">
-                <button
-                  type="button"
-                  className={aspect === "16:9" ? "ratio is-on" : "ratio"}
-                  onClick={() => setAspect("16:9")}
-                  data-tip="Export at 16:9 — landscape (1920×1080)"
-                  aria-pressed={aspect === "16:9"}
-                >16:9</button>
-                <button
-                  type="button"
-                  className={aspect === "9:16" ? "ratio is-on" : "ratio"}
-                  onClick={() => setAspect("9:16")}
-                  data-tip="Export at 9:16 — portrait (1080×1920)"
-                  aria-pressed={aspect === "9:16"}
-                >9:16</button>
-              </div>
             </div>
             <div className="transport__center">
               {timeDraft == null ? (
@@ -1243,7 +1229,6 @@ export default function Editor({
           onScrubEnd={onScrubEnd}
           onOpen={openInspect}
           onAdd={askAdd}
-          onAddFiles={onAddFiles}
           onResizeBoundary={resizeBoundary}
           trimEnd={trimEnd}
           onTrimChange={setTrimEnd}
@@ -1777,159 +1762,19 @@ export default function Editor({
         </div>
         </div>
 
-        <div
-          className={`side__group${sideTab === "captions" ? "" : " is-off"}`}
-          id="side-panel-captions"
-          role="tabpanel"
-          aria-labelledby="side-tab-captions"
-          data-tab="captions"
-        >
-        <div className="panel captions">
-          <h2 className="panel__h">Captions</h2>
-          {!(captionCues && captionCues.length) ? (
-            <div className="cap-empty">
-              <button type="button" className="cap-upload" onClick={() => capInputRef.current && capInputRef.current.click()}>
-                <span className="cap-upload__i">⤒</span> Upload timestamped script
-              </button>
-              <p className="cap-hint">
-                An <code>.srt</code>, <code>.vtt</code>, or timestamped <code>.txt</code> — inline
-                markers like <code>(0:03)</code>, NoteGPT ranges, or <code>[0:03]</code> lines all
-                work. Captions sync to the audio and burn into the MP4. Uploading a script also
-                enables <b>Image↔narration sync</b>, which finds each line's real speech onset in
-                the voiceover and snaps the matching image onto it — so images stay locked to what
-                is actually spoken.
-              </p>
-              {captionError && <div className="note note--bad">{captionError}</div>}
-            </div>
-          ) : (
-            <>
-              <div className="cap-bar">
-                <button
-                  type="button"
-                  className={`cap-switch ${captionsOn ? "is-on" : ""}`}
-                  onClick={() => setCaptionsOn(!captionsOn)}
-                  aria-pressed={captionsOn}
-                >
-                  <span className="cap-switch__box" />
-                  {captionsOn ? "On" : "Off"}
-                </button>
-                <span className="cap-meta">
-                  <span className="cap-meta__name">{captionName || "captions"}</span>
-                  {captionCues.length} lines ·{" "}
-                  <button type="button" className="cap-replace" onClick={() => capInputRef.current && capInputRef.current.click()}>replace</button>
-                </span>
-              </div>
-
-              <div className="cap-bar" style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                <button
-                  type="button"
-                  className={`cap-switch ${syncOn ? "is-on" : ""}`}
-                  onClick={() => setSyncOn && setSyncOn((v) => !v)}
-                  disabled={!!(syncStatus && syncStatus.decoding)}
-                  aria-pressed={!!syncOn}
-                  title="Find each line's real speech onset in the voiceover and snap the matching image onto it"
-                >
-                  <span className="cap-switch__box" />
-                  Image↔narration sync
-                </button>
-                <span className="cap-meta">
-                  <span className="cap-meta__name">
-                    {syncStatus && syncStatus.decoding
-                      ? "analysing voiceover…"
-                      : syncOn
-                        ? `${syncAligned || 0} image${syncAligned === 1 ? "" : "s"} moved to narration`
-                        : "off — images keep filename timestamps"}
-                  </span>
-                </span>
-              </div>
-              {syncStatus && syncStatus.error && (
-                <div className="note note--bad" style={{ marginTop: 8 }}>{syncStatus.error}</div>
-              )}
-
-              <div className="cap-body" aria-disabled={!captionsOn}>
-                <div className="mini-h">Style</div>
-                <div className="transitions__chips">
-                  {CAPTION_STYLE_LIST.map((st) => (
-                    <button
-                      key={st.id}
-                      type="button"
-                      className={`trchip ${captionStyle === st.id ? "is-on" : ""}`}
-                      onClick={() => setCaptionStyle(st.id)}
-                    >
-                      {st.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mini-h" style={{ marginTop: 12 }}>Entrance Animation</div>
-                <div className="transitions__chips">
-                  {CAPTION_ANIMATION_LIST.map((a) => (
-                    <button
-                      key={a.id}
-                      type="button"
-                      className={`trchip ${captionAnimation === a.id ? "is-on" : ""}`}
-                      onClick={() => setCaptionAnimation(a.id)}
-                    >
-                      {a.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mini-h" style={{ marginTop: 12 }}>Size</div>
-                <div className="seg">
-                  {[["sm", "Small"], ["md", "Medium"], ["lg", "Large"]].map(([id, lbl]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className={captionFontScale == null && captionSize === id ? "is-on" : ""}
-                      onClick={() => { setCaptionSize(id); setCaptionFontScale && setCaptionFontScale(null); }}
-                    >{lbl}</button>
-                  ))}
-                </div>
-
-                <div className="mini-h cap-row" style={{ marginTop: 12 }}>
-                  <span>Font size (fine-tune)</span>
-                  {captionFontScale != null && (
-                    <button type="button" className="cap-replace" onClick={() => setCaptionFontScale && setCaptionFontScale(null)}>
-                      Reset
-                    </button>
-                  )}
-                </div>
-                <label className="trdur">
-                  <input
-                    type="range" min={0.03} max={0.10} step={0.002}
-                    value={captionFontScale != null ? captionFontScale : (CAPTION_SIZES[captionSize] || CAPTION_SIZES.md)}
-                    onChange={(e) => setCaptionFontScale && setCaptionFontScale(+e.target.value)}
-                  />
-                  <span className="trdur__val">
-                    {Math.round((captionFontScale != null ? captionFontScale : (CAPTION_SIZES[captionSize] || CAPTION_SIZES.md)) * 1000) / 10}%
-                  </span>
-                </label>
-
-                <div className="mini-h cap-row" style={{ marginTop: 12 }}>
-                  <span>Line spacing (2-line captions)</span>
-                  {captionLineHeight != null && (
-                    <button type="button" className="cap-replace" onClick={() => setCaptionLineHeight && setCaptionLineHeight(null)}>
-                      Reset
-                    </button>
-                  )}
-                </div>
-                <label className="trdur">
-                  <input
-                    type="range" min={1.0} max={2.2} step={0.05}
-                    value={captionLineHeight != null ? captionLineHeight : captionLineHeightDefault(captionStyle)}
-                    onChange={(e) => setCaptionLineHeight && setCaptionLineHeight(+e.target.value)}
-                  />
-                  <span className="trdur__val">
-                    {(captionLineHeight != null ? captionLineHeight : captionLineHeightDefault(captionStyle)).toFixed(2)}×
-                  </span>
-                </label>
-              </div>
-              {captionError && <div className="note note--bad">{captionError}</div>}
-            </>
-          )}
-        </div>
-        </div>
+        <CaptionPanel
+          sideTab={sideTab}
+          captionCues={captionCues} captionsOn={captionsOn} setCaptionsOn={setCaptionsOn}
+          captionStyle={captionStyle} setCaptionStyle={setCaptionStyle}
+          captionFont={captionFont} setCaptionFont={setCaptionFont}
+          captionAnimation={captionAnimation} setCaptionAnimation={setCaptionAnimation}
+          captionSize={captionSize} setCaptionSize={setCaptionSize}
+          captionLineHeight={captionLineHeight} setCaptionLineHeight={setCaptionLineHeight}
+          captionFontScale={captionFontScale} setCaptionFontScale={setCaptionFontScale}
+          captionName={captionName} captionError={captionError}
+          onTranscribe={onTranscribe} transcribeStatus={transcribeStatus} capInputRef={capInputRef}
+          syncOn={syncOn} setSyncOn={setSyncOn} syncStatus={syncStatus} syncAligned={syncAligned}
+        />
 
         <div
           className={`side__group${sideTab === "audio" ? "" : " is-off"}`}
