@@ -135,6 +135,7 @@ export default function Editor({
   captionSize, setCaptionSize, captionLineHeight, setCaptionLineHeight,
   captionFontScale, setCaptionFontScale,
   captionAnimation, setCaptionAnimation,
+  captionMode, setCaptionMode, pickCaptionPreset,
   captionName, captionError, onCaptionFile,
   onTranscribe, transcribeStatus, audioFile,
   syncOn, setSyncOn, syncStatus, syncAligned,
@@ -1768,6 +1769,8 @@ export default function Editor({
           captionStyle={captionStyle} setCaptionStyle={setCaptionStyle}
           captionFont={captionFont} setCaptionFont={setCaptionFont}
           captionAnimation={captionAnimation} setCaptionAnimation={setCaptionAnimation}
+          captionMode={captionMode} setCaptionMode={setCaptionMode}
+          pickCaptionPreset={pickCaptionPreset}
           captionSize={captionSize} setCaptionSize={setCaptionSize}
           captionLineHeight={captionLineHeight} setCaptionLineHeight={setCaptionLineHeight}
           captionFontScale={captionFontScale} setCaptionFontScale={setCaptionFontScale}
