@@ -193,7 +193,7 @@ export default function Home() {
   const [fadeIn, setFadeIn] = useState(0.5);          // opening fade seconds (0 = off)
   const [fadeOut, setFadeOut] = useState(0.6);        // ending fade seconds (0 = off)
   const [motionByName, setMotionByName] = useState({}); // clip name -> zoomin | zoomout
-  const [motionAmount, setMotionAmount] = useState(0.08); // Ken Burns zoom depth (0–0.2)
+  const [motionAmount, setMotionAmount] = useState(0.2); // Ken Burns zoom depth (0–0.2, default max 20%)
   const [fxByName, setFxByName] = useState({});        // clip name -> image effect id (lib/imageEffects)
   const [fxAmount, setFxAmount] = useState(0.5);       // image effect intensity (0–1)
   const [trimByName, setTrimByName] = useState({});   // video clip name -> in-point seconds
@@ -211,10 +211,15 @@ export default function Home() {
   const [syncOnsets, setSyncOnsets] = useState(null); // [{ cueStart, onset|null }]
   const [syncStatus, setSyncStatus] = useState({ decoding: false, error: null, detected: 0, total: 0 });
   const [captionStyle, setCaptionStyle] = useState("classic");
+  const [captionFont, setCaptionFont] = useState("classic"); // caption typeface (preview == render)
   const [captionSize, setCaptionSize] = useState("md");
   const [captionLineHeight, setCaptionLineHeight] = useState(null); // null = per-style default
   const [captionFontScale, setCaptionFontScale] = useState(null);   // null = use the size preset
   const [captionAnimation, setCaptionAnimation] = useState("none"); // caption entrance animation (preview == render)
+  // Auto-transcribed cues (with per-word timings) — take precedence over an
+  // uploaded transcript when present.
+  const [transcribedCues, setTranscribedCues] = useState(null);
+  const [transcribeStatus, setTranscribeStatus] = useState({ busy: false, progress: 0, error: null });
   const [importing, setImporting] = useState(null);   // { done, total } while decoding imports
   const [importNote, setImportNote] = useState(null);  // transient "skipped X files" toast
   const importNoteTimerRef = useRef(0);
@@ -452,16 +457,6 @@ export default function Home() {
           return { file: f, seconds: parseTimestampName(f.name), img };
         })
       );
-      // Auto-set the frame ratio from the first imported media's orientation
-      // (only while on the import tray — a manual editor choice is never clobbered).
-      if (!built && loaded.length) {
-        const first = loaded.find((l) => l.img && (l.img.naturalHeight || l.img.videoHeight));
-        if (first) {
-          const w = first.img.naturalWidth || first.img.videoWidth || 0;
-          const h = first.img.naturalHeight || first.img.videoHeight || 0;
-          setAspect(w && h && h > w ? "9:16" : "16:9");
-        }
-      }
       commitDoc((d) => {
       const next = d.slots.map((s) => ({ ...s }));
       for (const { file, seconds, img } of loaded) {
@@ -477,7 +472,7 @@ export default function Home() {
     } finally {
       setImporting(null);
     }
-  }, [commitDoc, built, setAspect]);
+  }, [commitDoc]);
 
   // Swap the image/video in one slot, keeping its timestamp.
   const replaceImage = useCallback(async (id, file) => {
@@ -543,8 +538,60 @@ export default function Home() {
     () => (captionRaw ? parseTranscript(captionRaw, audioDuration) : { cues: [], error: null }),
     [captionRaw, audioDuration]
   );
-  const captionCues = captionParse.cues;
-  const captionError = captionParse.error;
+  // Auto-transcribed cues (with word timings) win over an uploaded transcript.
+  const captionCues = transcribedCues && transcribedCues.length ? transcribedCues : captionParse.cues;
+  const captionError = transcribeStatus.error || captionParse.error;
+
+  // Auto-transcribe the project audio with whisper → word-timed caption cues.
+  // Same backend origin convention as lib/serverRender.js (NEXT_PUBLIC_RENDER_URL).
+  const SERVER_URL = process.env.NEXT_PUBLIC_RENDER_URL || "";
+  const onTranscribe = useCallback(async () => {
+    if (!audioFile) { setTranscribeStatus({ busy: false, progress: 0, error: "Add an audio file first." }); return; }
+    setTranscribeStatus({ busy: true, progress: 0, error: null });
+    try {
+      const fd = new FormData();
+      fd.append("audio", audioFile, audioFile.name || "audio.mp3");
+      const res = await fetch(`${SERVER_URL}/api/transcribe`, { method: "POST", body: fd });
+      if (!res.ok || !res.body) throw new Error(`transcribe request failed (${res.status})`);
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const ln of chunk.split("\n")) {
+            if (!ln.startsWith("data: ")) continue;
+            let msg;
+            try { msg = JSON.parse(ln.slice(6)); } catch { continue; }
+            if (msg.progress != null) setTranscribeStatus((s) => ({ ...s, progress: msg.progress }));
+            else if (msg.error) {
+              const detail = msg.error === "whisper-missing"
+                ? "Whisper isn't set up on the render server. Install Python 3 + `pip install faster-whisper` there (model downloads on first run)."
+                : (msg.detail || msg.error);
+              setTranscribeStatus({ busy: false, progress: 0, error: detail });
+              return;
+            } else if (msg.done) {
+              const cues = Array.isArray(msg.cues) ? msg.cues : [];
+              setTranscribedCues(cues);
+              setCaptionName("auto-transcription");
+              setCaptionsOn(true);
+              setSyncOn(true);
+              setTranscribeStatus({ busy: false, progress: 1, error: cues.length ? null : "No speech detected." });
+              return;
+            }
+          }
+        }
+      }
+      setTranscribeStatus({ busy: false, progress: 0, error: "Transcription ended unexpectedly." });
+    } catch (e) {
+      setTranscribeStatus({ busy: false, progress: 0, error: e.message || String(e) });
+    }
+  }, [audioFile, SERVER_URL]);
 
   // Decode the voiceover once and find each line's real speech onset. Runs when
   // sync is on AND we have both the audio and a parsed script. Decoding a long
@@ -844,10 +891,12 @@ export default function Home() {
     setWatermarkSize(0.15); setWatermarkX(0.8); setWatermarkY(0.88); setWatermarkOpacity(0.9);
     setAspect("16:9"); setFps(coarse ? 24 : 30); setRenderQuality(coarse ? "720p" : "full");
     setTransitionDuration(DEFAULT_TRANSITION_DURATION); setFadeIn(0.5); setFadeOut(0.6);
-    setMotionByName({}); setMotionAmount(0.08); setTrimByName({}); setVolumeByName({}); setMuteByName({}); setFitByName({});
+    setMotionByName({}); setMotionAmount(0.2); setTrimByName({}); setVolumeByName({}); setMuteByName({}); setFitByName({});
     setFxByName({}); setFxAmount(0.5);
     setTrimEnd(0);
     setCaptionRaw(null); setCaptionName(null); setCaptionsOn(false); setCaptionStyle("classic");
+    setCaptionFont("classic"); setTranscribedCues(null);
+    setTranscribeStatus({ busy: false, progress: 0, error: null });
     setSyncOn(false); setSyncOnsets(null); setSyncStatus({ decoding: false, error: null, detected: 0, total: 0 });
     setCaptionSize("md"); setCaptionLineHeight(null); setCaptionFontScale(null);
     setError(null); setOutUrl(null); setProgress(0);
@@ -882,7 +931,7 @@ export default function Home() {
     v: 1,
     settings: { aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd },
     maps: { motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName },
-    captions: { captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation },
+    captions: { captionRaw, captionName, captionsOn, captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation },
     transitionsByName,
     slots: slots.map((s) => ({
       id: s.id, seconds: s.seconds, empty: !!s.empty,
@@ -1013,7 +1062,7 @@ export default function Home() {
       setAspect(st.aspect ?? "16:9"); setFps(st.fps ?? 30); setRenderQuality(st.renderQuality ?? "full");
       setTransitionDuration(st.transitionDuration ?? DEFAULT_TRANSITION_DURATION);
       setFadeIn(st.fadeIn ?? 0.5); setFadeOut(st.fadeOut ?? 0.6);
-      setMotionAmount(st.motionAmount ?? 0.08); setTrimEnd(st.trimEnd ?? 0);
+      setMotionAmount(st.motionAmount ?? 0.2); setTrimEnd(st.trimEnd ?? 0);
       setFxAmount(st.fxAmount ?? 0.5);
       const mp = d.maps || {};
       setMotionByName(mp.motionByName || {}); setTrimByName(mp.trimByName || {});
@@ -1022,6 +1071,8 @@ export default function Home() {
       const cp = d.captions || {};
       setCaptionRaw(cp.captionRaw ?? null); setCaptionName(cp.captionName ?? null);
       setCaptionsOn(!!cp.captionsOn); setCaptionStyle(cp.captionStyle ?? "classic");
+      setCaptionFont(cp.captionFont ?? "classic"); setTranscribedCues(null);
+      setTranscribeStatus({ busy: false, progress: 0, error: null });
       setSyncOn(!!cp.captionRaw); setSyncOnsets(null);
       setSyncStatus({ decoding: false, error: null, detected: 0, total: 0 });
       setCaptionSize(cp.captionSize ?? "md"); setCaptionLineHeight(cp.captionLineHeight ?? null);
@@ -1085,7 +1136,7 @@ export default function Home() {
     setBusy(true); setError(null); setOutUrl(null); setProgress(0);
     try {
       const exportClips = trimClips(clips, exportDuration);
-      const transitions = exportClips.map((c) => transitionsByName[c.name] || "cut");
+      const transitions = exportClips.map((c) => transitionsByName[c.name] || "fadeblack");
       const motions = exportClips.map((c) => motionByName[c.name] || "none");
       const fx = exportClips.map((c) => fxByName[c.name] || "none");
       // Per-clip video params (parallel to exportClips). Images get 0/1/none.
@@ -1113,7 +1164,7 @@ export default function Home() {
         clips: exportClips, imagesByName, videosByName, audioFile,
         width: renderDims.width, height: renderDims.height, fps,
         transitions, transitionDuration, motions, motionAmount, fx, fxAmount, trims, volumes, speeds, fadeIn, fadeOut,
-        captions, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
+        captions, captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation,
         sfx: mixedAudio,
         voiceFx,
         voiceLevel,
@@ -1195,7 +1246,7 @@ export default function Home() {
     const stopKeepAwake = startKeepAwake();
     try {
       const exportClips = trimClips(clips, exportDuration);
-      const transitions = exportClips.map((c) => transitionsByName[c.name] || "cut");
+      const transitions = exportClips.map((c) => transitionsByName[c.name] || "fadeblack");
       const motions = exportClips.map((c) => motionByName[c.name] || "none");
       const fx = exportClips.map((c) => fxByName[c.name] || "none");
       // Per-clip video params (parallel to exportClips), same rule as the ffmpeg
@@ -1227,7 +1278,7 @@ export default function Home() {
           transitions, transitionDuration, motions, motionAmount, fx, fxAmount, audioFile,
           videosByName, trims, speeds, volumes,
           cues: captionsOn && captionCues.length ? captionCues : null,
-          captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation,
+          captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation,
           sfx: mixedAudio,
           voiceFx,
           voiceLevel,
@@ -1514,7 +1565,6 @@ export default function Home() {
           onRender={onRender} onCancel={onCancel} busy={busy} progress={progress}
           outUrl={outUrl} error={error} warnings={warnings}
           replaceImage={replaceImage} removeImage={removeImage} fillGap={fillGap}
-          onAddFiles={addImages}
           resizeBoundary={resizeBoundary}
           transitionsByName={transitionsByName} transitionDuration={transitionDuration}
           setTransition={setTransition} applyTransitionAll={applyTransitionAll}
@@ -1536,10 +1586,12 @@ export default function Home() {
           undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo}
           captionCues={captionCues} captionsOn={captionsOn} setCaptionsOn={setCaptionsOn}
           captionStyle={captionStyle} setCaptionStyle={setCaptionStyle}
+          captionFont={captionFont} setCaptionFont={setCaptionFont}
           captionAnimation={captionAnimation} setCaptionAnimation={setCaptionAnimation}
           captionSize={captionSize} setCaptionSize={setCaptionSize}
           captionLineHeight={captionLineHeight} setCaptionLineHeight={setCaptionLineHeight}
           captionFontScale={captionFontScale} setCaptionFontScale={setCaptionFontScale}
+          onTranscribe={onTranscribe} transcribeStatus={transcribeStatus} audioFile={audioFile}
           captionName={captionName} captionError={captionError} onCaptionFile={onCaptionFile}
           syncOn={syncOn} setSyncOn={setSyncOn}
           syncStatus={syncStatus} syncAligned={syncAligned}
