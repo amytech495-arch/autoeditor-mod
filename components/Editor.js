@@ -110,7 +110,7 @@ export default function Editor({
   renderQuality = "full", setRenderQuality, renderDims,
   onRender, onCancel, busy, progress, outUrl, error, warnings,
   onWebCodecsTest, onWebCodecsCancel, wcBusy, wcProgress, wcPhase, wcAvailable, serverAvailable, wcEnabled, setWcEnabled,
-  replaceImage, removeImage, fillGap, duplicateImage, resizeBoundary,
+  replaceImage, removeImage, fillGap, duplicateImage, renameImage, resizeBoundary,
   bgFillMode = "blur", setBgFillMode, bgBlur = 24, setBgBlur, bgOpacity = 0.7, setBgOpacity,
   voiceoverClip = null,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
@@ -188,6 +188,8 @@ export default function Editor({
   const logoInputRef = useRef(null);
   const [logoEditOpen, setLogoEditOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [renameVal, setRenameVal] = useState("");
+  const [renameErr, setRenameErr] = useState(null);
   const rafRef = useRef(0);
   const fileInputRef = useRef(null);
   const capInputRef = useRef(null);
@@ -531,8 +533,8 @@ export default function Editor({
     setPendUrl((u) => { if (u) URL.revokeObjectURL(u); return null; });
     setPendFile(null);
   }, []);
-  const openInspect = useCallback((name) => { clearPend(); setInspect(name); }, [clearPend]);
-  const closeInspect = useCallback(() => { clearPend(); setInspect(null); }, [clearPend]);
+  const openInspect = useCallback((name) => { clearPend(); setInspect(name); setRenameVal(""); setRenameErr(null); }, [clearPend]);
+  const closeInspect = useCallback(() => { clearPend(); setInspect(null); setRenameVal(""); setRenameErr(null); }, [clearPend]);
   const onPickReplacement = useCallback((e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
@@ -1219,6 +1221,7 @@ export default function Editor({
                 </select>
               </span>
             </label>
+          </div>
           <div className="mini-h" style={{ marginTop: 10 }}>Background fill (non-16:9 images)</div>
           <div className="ctrl-row">
             <label className="ctrl">
@@ -1249,6 +1252,7 @@ export default function Editor({
               </div>
             </>
           )}
+          <div className="ctrl-row">
             <label className="ctrl">
               <span className="ctrl__label">Quality</span>
               <span className="selectwrap">
@@ -2386,7 +2390,47 @@ export default function Editor({
               </div>
               <div className="modal__file">
                 {pendFile ? pendFile.name : (el && el.fileName) || ""}
+                {!pendFile && renameImage && (
+                  <button
+                    type="button"
+                    className="mbtn mbtn--ghost"
+                    style={{ marginLeft: 8, padding: "2px 8px", fontSize: 11 }}
+                    title="Rename this image (must keep timestamp format, e.g. 0-05.jpg)"
+                    onClick={() => {
+                      setRenameVal((el && el.fileName) || "");
+                      setRenameErr(null);
+                    }}
+                  >✏️</button>
+                )}
               </div>
+              {renameVal && (
+                <div className="modal__rename" style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input
+                    type="text"
+                    value={renameVal}
+                    onChange={(e) => { setRenameVal(e.target.value); setRenameErr(null); }}
+                    placeholder='e.g. 0-05.jpg'
+                    style={{ flex: 1, padding: "6px 8px", fontSize: 13 }}
+                  />
+                  <button
+                    type="button"
+                    className="mbtn mbtn--primary"
+                    style={{ padding: "6px 12px", fontSize: 12 }}
+                    onClick={async () => {
+                      const r = await renameImage(inspect, renameVal.trim());
+                      if (r.ok) { setRenameVal(""); setRenameErr(null); }
+                      else setRenameErr(r.error);
+                    }}
+                  >Save</button>
+                  <button
+                    type="button"
+                    className="mbtn"
+                    style={{ padding: "6px 12px", fontSize: 12 }}
+                    onClick={() => { setRenameVal(""); setRenameErr(null); }}
+                  >Cancel</button>
+                </div>
+              )}
+              {renameErr && <div className="modal__hint modal__hint--warn">{renameErr}</div>}
 
               {insClip && !insClip.gap && (
                 <div className="modal__motion">
