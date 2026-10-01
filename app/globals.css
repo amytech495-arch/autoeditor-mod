@@ -458,7 +458,14 @@ body {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 16px; padding: 12px 14px 16px; user-select: none;
   overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+  height: 100%;
 }
+.timeline-wrap { position: relative; display: flex; flex-direction: column; min-height: 0; }
+.timeline-wrap__resize {
+  position: absolute; left: 0; right: 0; top: 0; height: 10px;
+  cursor: ns-resize; z-index: 5; opacity: 0; transition: opacity .15s;
+}
+.timeline-wrap:hover .timeline-wrap__resize { opacity: 1; background: var(--accent); }
 .tl::-webkit-scrollbar { height: 8px; }
 .tl::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
 /* Dense timelines set --tl-min (px) so the track widens past the container and
