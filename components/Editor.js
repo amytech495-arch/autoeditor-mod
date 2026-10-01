@@ -122,7 +122,7 @@ export default function Editor({
   renderQuality = "full", setRenderQuality, renderDims,
   onRender, onCancel, busy, progress, outUrl, error, warnings,
   onWebCodecsTest, onWebCodecsCancel, wcBusy, wcProgress, wcPhase, wcAvailable, serverAvailable, wcEnabled, setWcEnabled,
-  replaceImage, removeImage, fillGap, resizeBoundary,
+  replaceImage, removeImage, fillGap, duplicateImage, resizeBoundary,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
   fadeIn, setFadeIn, fadeOut, setFadeOut,
   motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
@@ -2543,6 +2543,12 @@ export default function Editor({
                 <div className="modal__actions">
                   <button className="mbtn mbtn--primary" onClick={() => replaceInputRef.current && replaceInputRef.current.click()}>
                     Replace {isVid ? "video" : "image"}
+                  </button>
+                  <button
+                    className="mbtn"
+                    onClick={() => { if (duplicateImage) { duplicateImage(inspect); closeInspect(); } }}
+                  >
+                    ⧉ Duplicate
                   </button>
                   <button className="mbtn mbtn--danger" onClick={removeInspected}>Remove from timeline</button>
                 </div>
