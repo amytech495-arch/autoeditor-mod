@@ -379,7 +379,7 @@ export default function Home() {
   }, []);
 
   const setBgVolume = useCallback((id, v) => {
-    setBgClips((prev) => prev.map((c) => (c.id === id ? { ...c, volume: Math.min(1, Math.max(0, +v || 0)) } : c)));
+    setBgClips((prev) => prev.map((c) => (c.id === id ? { ...c, volume: Math.min(1.5, Math.max(0, +v || 0)) } : c)));
   }, []);
 
   // Update a BG clip: trim (`offset`/`duration`), volume, or fades.
