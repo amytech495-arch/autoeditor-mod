@@ -141,7 +141,7 @@ export default function Editor({
   onTranscribe, transcribeStatus, audioFile, onDeleteCaptions,
   syncOn, setSyncOn, syncStatus, syncAligned,
   bgClips = [], selectedBg, uploadBg, addBgClip, moveBgClip, setBgVolume, updateBgClip, removeBgClip,
-  bgOpen, setBgOpen,
+  bgOpen, setBgOpen, splitBgClip, duplicateBgClip, addTimelineImages,
   sfx = [], addSfx, moveSfx, setSfxVolume, removeSfx, uploadSfx, removeSfxUpload,
   selectedSound, setSelectedSound, sfxUploads = [], sfxOpen, setSfxOpen,
   sfxMaster = 1, setSfxMaster,
@@ -1240,6 +1240,12 @@ export default function Editor({
           onBgMove={moveBgClip}
           onBgTrim={updateBgClip}
           onBgOpen={setBgOpen}
+          onBgSplit={splitBgClip}
+          onBgDuplicate={duplicateBgClip}
+          onBgDelete={removeBgClip}
+          onBgVolume={setBgVolume}
+          selectedBgId={bgOpen}
+          onAddImages={addTimelineImages}
           zoom={timelineZoom}
           scrollRef={timelineScrollRef}
           sfx={sfx}
