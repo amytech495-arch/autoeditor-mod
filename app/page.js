@@ -138,6 +138,7 @@ function useHistory(initial) {
 export default function Home() {
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
+  const [voiceoverClip, setVoiceoverClip] = useState(null); // {name,file,url,duration,peaks,volume} — shown as a timeline track
   const [audioDuration, setAudioDuration] = useState(0);
   const [peaks, setPeaks] = useState([]);
   // Voice-over effect: { effect, strength } applied to the narration in preview
@@ -265,10 +266,14 @@ export default function Home() {
     setError(null);
     try {
       const d = await getAudioDuration(file);
+      const url = URL.createObjectURL(file);
       setAudioFile(file);
-      setAudioUrl(URL.createObjectURL(file));
+      setAudioUrl(url);
       setAudioDuration(d);
-      getWaveformPeaks(file, 1000).then(setPeaks);
+      const pk = await getWaveformPeaks(file, 1000).catch(() => []);
+      setPeaks(pk);
+      // Show the voiceover as its own timeline track (locked — it's the timing master).
+      setVoiceoverClip({ id: "voiceover", name: file.name || "voiceover.mp3", file, url, start: 0, sourceDuration: d, offset: 0, duration: d, peaks: pk, volume: 1, isVoiceover: true });
     } catch (e) { setError(e.message); }
   }, []);
 
@@ -1022,7 +1027,7 @@ export default function Home() {
     // Touch devices default to lighter 720p / 24fps (less CPU/RAM) for new projects.
     let coarse = false;
     try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch (_) {}
-    setAudioFile(null); setAudioUrl(null); setAudioDuration(0); setPeaks([]);
+    setAudioFile(null); setAudioUrl(null); setAudioDuration(0); setPeaks([]); setVoiceoverClip(null);
     setBgClips((prev) => {
       prev.forEach((c) => { if (c.url) { try { URL.revokeObjectURL(c.url); } catch (_) {} } });
       return [];
@@ -1168,9 +1173,15 @@ export default function Home() {
       const [audio, newSlots] = await Promise.all([audioP, slotsP]);
       // Commit the loaded project.
       if (audio) {
-        setAudioFile(audio.file); setAudioUrl(URL.createObjectURL(audio.file));
+        const aUrl = URL.createObjectURL(audio.file);
+        setAudioFile(audio.file); setAudioUrl(aUrl);
         setAudioDuration(audio.dur);
-        getWaveformPeaks(audio.file, waveBucketCount(audio.dur)).then(setPeaks).catch(() => {});
+        getWaveformPeaks(audio.file, waveBucketCount(audio.dur)).then((pk) => {
+          setPeaks(pk);
+          setVoiceoverClip({ id: "voiceover", name: audio.file.name || "voiceover.mp3", file: audio.file, url: aUrl, start: 0, sourceDuration: audio.dur, offset: 0, duration: audio.dur, peaks: pk, volume: 1, isVoiceover: true });
+        }).catch(() => {});
+      } else {
+        setVoiceoverClip(null);
       }
       // Background-music clips (migrate any legacy audio layers by flattening their clips).
       const bgMeta = d.bgClips || (d.audioLayers || []).flatMap((al) => al.clips || []);
@@ -1755,6 +1766,7 @@ export default function Home() {
           syncOn={syncOn} setSyncOn={setSyncOn}
           syncStatus={syncStatus} syncAligned={syncAligned}
           bgClips={bgClips} selectedBg={selectedBg} uploadBg={uploadBg}
+          voiceoverClip={voiceoverClip} voiceLevel={voiceLevel} setVoiceLevel={setVoiceLevel}
           addBgClip={addBgClip} moveBgClip={moveBgClip} setBgVolume={setBgVolume}
           splitBgClip={splitBgClip} duplicateBgClip={duplicateBgClip} removeBgClip={removeBgClip}
           bgOpen={bgOpen} setBgOpen={setBgOpen} addTimelineImages={addTimelineImages}
