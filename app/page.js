@@ -605,6 +605,29 @@ export default function Home() {
     }));
   }, [commitDoc]);
 
+  // Duplicate an image slot: inserts a copy 0.1s after the original so it
+  // appears right after on the timeline. Returns the new slot id.
+  const duplicateImage = useCallback((id) => {
+    let newId = null;
+    commitDoc((d) => {
+      const i = d.slots.findIndex((s) => s.id === id);
+      if (i < 0) return d;
+      const src = d.slots[i];
+      if (!src.file || src.seconds == null) return d;
+      newId = nextId();
+      const copy = {
+        ...src,
+        id: newId,
+        seconds: +(src.seconds + 0.1).toFixed(3),
+        empty: false,
+      };
+      const next = [...d.slots];
+      next.splice(i + 1, 0, copy);
+      return { ...d, slots: next };
+    });
+    return newId;
+  }, [commitDoc]);
+
   // Fill a gap. LEAD_IN adds a new slot at 0; otherwise fill the empty slot.
   const fillGap = useCallback(async (name, file) => {
     if (!file) return;
@@ -1688,7 +1711,7 @@ export default function Home() {
           wcEnabled={wcEnabled} setWcEnabled={setWcEnabled}
           onRender={onRender} onCancel={onCancel} busy={busy} progress={progress}
           outUrl={outUrl} error={error} warnings={warnings}
-          replaceImage={replaceImage} removeImage={removeImage} fillGap={fillGap}
+          replaceImage={replaceImage} removeImage={removeImage} fillGap={fillGap} duplicateImage={duplicateImage}
           resizeBoundary={resizeBoundary}
           transitionsByName={transitionsByName} transitionDuration={transitionDuration}
           setTransition={setTransition} applyTransitionAll={applyTransitionAll}
