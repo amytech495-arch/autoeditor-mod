@@ -253,7 +253,7 @@ function concatArgs({ audioName, width, height, fps, fadeIn, fadeOut, total, cap
   filterFiles.push({ name: "vf.txt", text: vf });
   // The voiceover is the only audio stream in concat mode, so -af both carries the
   // voice-over effect and the fades.
-  const voVolNum = Math.max(0, Math.min(1, voiceLevel == null ? 1 : +voiceLevel));
+  const voVolNum = Math.max(0, Math.min(1.5, voiceLevel == null ? 1 : +voiceLevel));
   const voVol = voVolNum === 1 ? [] : [`volume=${voVolNum.toFixed(3)}`];
   const af = [...voVol, ...(voiceFxFilterString(voiceFx) ? [voiceFxFilterString(voiceFx)] : []), ...fadeAudio(fadeIn, fadeOut, total)];
   const args = ["-f", "concat", "-safe", "0", "-i", "concat.txt", "-i", audioName, "-filter_script:v", "vf.txt"];
@@ -387,7 +387,7 @@ function graphArgs({ clips, paths, audioName, width, height, fps, transitions, t
   let amap;
   // Voice-over master volume, then the effect chain on input n (the narration)
   // before it feeds the mix.
-  const voVolNum = Math.max(0, Math.min(1, voiceLevel == null ? 1 : +voiceLevel));
+  const voVolNum = Math.max(0, Math.min(1.5, voiceLevel == null ? 1 : +voiceLevel));
   const voPre = voVolNum === 1 ? "" : `volume=${voVolNum.toFixed(3)},`;
   const vfx = voiceFxFilterString(voiceFx);
   if (voPre || vfx) parts.push(`[${n}:a]${voPre}${vfx}[vfx]`);
@@ -453,7 +453,7 @@ function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fa
   let amap;
   // Voice-over master volume, then the effect chain on input 1 (the narration),
   // applied before the mix.
-  const voVolNum = Math.max(0, Math.min(1, voiceLevel == null ? 1 : +voiceLevel));
+  const voVolNum = Math.max(0, Math.min(1.5, voiceLevel == null ? 1 : +voiceLevel));
   const voPre = voVolNum === 1 ? "" : `volume=${voVolNum.toFixed(3)},`;
   const vfx = voiceFxFilterString(voiceFx);
   if (voPre || vfx) parts.push(`[1:a]${voPre}${vfx}[vfx]`);
