@@ -325,7 +325,25 @@ export default function Home() {
     try {
       const d = await getAudioDuration(file);
       const peaks = await getWaveformPeaks(file, waveBucketCount(d));
-      setSelectedBg({ name: file.name, file, url: URL.createObjectURL(file), duration: d, peaks });
+      const sel = { name: file.name, file, url: URL.createObjectURL(file), duration: d, peaks };
+      setSelectedBg(sel);
+      // CapCut-style: drop it straight onto the timeline at 0 so it's
+      // immediately visible and editable (no extra click needed).
+      const id = `bg${bgIdRef.current++}`;
+      setBgClips((prev) => [...prev, {
+        id,
+        name: sel.name,
+        file: sel.file,
+        url: URL.createObjectURL(sel.file),
+        start: 0,
+        sourceDuration: sel.duration,
+        offset: 0,
+        duration: sel.duration,
+        fadeIn: 0,
+        fadeOut: 0,
+        peaks: sel.peaks,
+        volume: 0.8,
+      }]);
     } catch (e) { setError(e.message); }
   }, []);
 
@@ -543,15 +561,24 @@ export default function Home() {
   // (e.g. "0-05.jpg") — anything else is rejected with an error.
   const addTimelineImages = useCallback(async (fileList) => {
     const { parseTimestampName } = await import("../lib/timestamp");
-    const files = Array.from(fileList || []);
+    const files = Array.from(fileList || []).filter((f) => isMediaFile(f));
+    if (!files.length) return;
     const bad = files.filter((f) => parseTimestampName(f.name) == null);
+    const good = files.filter((f) => parseTimestampName(f.name) != null);
     if (bad.length) {
       setError(
-        `Image name must be in timestamp format (e.g. "0-05.jpg") — rejected: ${bad.map((f) => f.name).join(", ")}`
+        `❌ ${bad.length} image${bad.length > 1 ? "s" : ""} rejected — name must be timestamp format like "0-05.jpg": ${bad.map((f) => f.name).join(", ")}`
       );
-      return;
+      // Keep the error visible for 8 seconds so it's not missed.
+      clearTimeout(importNoteTimerRef.current);
+      importNoteTimerRef.current = setTimeout(() => setError(null), 8000);
     }
-    if (files.length) await addImages(files);
+    if (good.length) {
+      await addImages(good);
+      setImportNote(`Added ${good.length} image${good.length > 1 ? "s" : ""} to the timeline.`);
+      clearTimeout(importNoteTimerRef.current);
+      importNoteTimerRef.current = setTimeout(() => { setImportNote(null); setError(null); }, 4000);
+    }
   }, [addImages]);
 
   // Swap the image/video in one slot, keeping its timestamp.
