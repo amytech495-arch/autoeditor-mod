@@ -5,7 +5,7 @@ import { parseTimestampName } from "../lib/timestamp";
 import { buildTimeline, trimClips, LEAD_IN } from "../lib/timeline";
 import { computeVoiceOnsets, syncClipsToVoiceover, alignedClipCount } from "../lib/syncAudio";
 import { resolveDimensions, capTo720, upTo4K } from "../lib/dimensions";
-import { getAudioDuration, getMediaDuration } from "../lib/audio";
+import { getAudioDuration, getMediaDuration, concatAudioSeries } from "../lib/audio";
 import { getWaveformPeaks, waveBucketCount } from "../lib/waveform";
 import { renderVideo, cancelRender, getActiveRender, reconnectRender, probeBackend } from "../lib/serverRender";
 import { renderWebCodecs, webCodecsCanRender, pickRenderProfile, startKeepAwake, crfTargetBitrate } from "../lib/webcodecsRender";
@@ -242,15 +242,31 @@ export default function Home() {
   const { slots, transitionsByName } = doc;
 
   const onAudio = useCallback(async (files) => {
-    const file = files[0];
-    if (!file) return;
+    const list = Array.from(files || []).filter((f) => f && f.type && f.type.startsWith("audio/"));
+    if (!list.length) return;
     setError(null);
     try {
+      // A dropped series (1.mp3, 2.mp3, 3.mp3…) is merged into a single narration
+      // in order; a lone file keeps its original format. Merging produces a WAV,
+      // which every consumer here already decodes (duration, waveform, sync,
+      // server upload, WebCodecs) — so the timeline and both renders just work.
+      let file = list[0];
+      let mergedCount = 1;
+      if (list.length > 1) {
+        const merged = await concatAudioSeries(list);
+        file = merged.file;
+        mergedCount = merged.count;
+      }
       const d = await getAudioDuration(file);
       setAudioFile(file);
       setAudioUrl(URL.createObjectURL(file));
       setAudioDuration(d);
-      getWaveformPeaks(file, 1000).then(setPeaks);
+      getWaveformPeaks(file, waveBucketCount(d)).then(setPeaks);
+      if (mergedCount > 1) {
+        setImportNote(`Merged ${mergedCount} audio files into one narration — “${file.name}”.`);
+        clearTimeout(importNoteTimerRef.current);
+        importNoteTimerRef.current = setTimeout(() => setImportNote(null), 6000);
+      }
     } catch (e) { setError(e.message); }
   }, []);
 
@@ -1385,7 +1401,7 @@ export default function Home() {
             <span>Quick tour</span>
           </button>
           <Dropzone
-            compact accept="audio/*" onFiles={onAudio} icon="♪"
+            compact multiple accept="audio/*" onFiles={onAudio} icon="♪"
             title="Import voiceover" filled={!!audioFile}
             filledLabel={audioFile ? audioFile.name : ""}
           />
@@ -1448,9 +1464,9 @@ export default function Home() {
 
           <div className="onboard__zones">
             <Dropzone
-              accept="audio/*" onFiles={onAudio} icon="♪"
+              multiple accept="audio/*" onFiles={onAudio} icon="♪"
               title="Voiceover audio"
-              hint="One MP3 or WAV — sets the total length"
+              hint="One file, or a numbered series (1.mp3, 2.mp3…) merged in order"
               filled={!!audioFile}
               filledLabel={audioFile ? audioFile.name : ""}
             />
