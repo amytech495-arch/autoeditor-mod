@@ -64,6 +64,7 @@ export default function Timeline({
   onBgSplit, onBgDuplicate, onBgDelete, onBgVolume, selectedBgId,
   onAddImages,
   sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
+  voiceoverClip = null, voiceLevel = 1, setVoiceLevel,
 }) {
   const trackRef = useRef(null);
   const imgInputRef = useRef(null);
@@ -461,6 +462,30 @@ export default function Timeline({
             ))}
           </div>
 
+          {/* Voiceover track: the master narration audio. Locked (no trim/move/
+              delete — it defines the timeline length); click for volume. */}
+          {voiceoverClip && (
+            <div
+              className="tl__lane tl__lane--voiceover"
+              title="Voiceover — click for volume (locked: defines the timeline length)"
+            >
+              <span className="tl__lane-tag">🎙 Voiceover</span>
+              <div
+                key={voiceoverClip.id}
+                className={`bgclip bgclip--voiceover${selectedBgId === "voiceover" ? " is-sel" : ""}`}
+                style={{ left: pctZoom(voiceoverClip.start), width: pctZoom(voiceoverClip.duration) }}
+                title={`${voiceoverClip.name} · ${voiceoverClip.duration.toFixed(1)}s — click for volume`}
+                onPointerDown={(e) => { e.stopPropagation(); onBgOpen && onBgOpen("voiceover"); }}
+              >
+                <Waveform
+                  peaks={voiceoverClip.peaks}
+                  style={{ width: "100%", height: "100%" }}
+                />
+                <span className="bgclip__label">{stem(voiceoverClip.name)}</span>
+              </div>
+            </div>
+          )}
+
           <div
             className="tl__lane tl__lane--bg"
             onPointerDown={onBgLaneDown}
@@ -499,7 +524,9 @@ export default function Timeline({
 
           {/* Audio editor toolbar: acts on the selected BG clip (or the clip under the playhead). */}
           {(() => {
-            const sel = bgClips.find((c) => c.id === selectedBgId)
+            const isVO = selectedBgId === "voiceover" && voiceoverClip;
+            const sel = isVO ? voiceoverClip
+              : bgClips.find((c) => c.id === selectedBgId)
               || bgClips.find((c) => time >= c.start && time < c.start + c.duration)
               || null;
             return (
@@ -507,31 +534,33 @@ export default function Timeline({
                 <span className="tl__audiobar-label">🎚 Audio</span>
                 <button
                   type="button" className="tl__audiobar-btn"
-                  disabled={!sel}
-                  title={sel ? `Split "${stem(sel.name)}" at playhead (${label(time)})` : "Select an audio clip first"}
-                  onClick={() => sel && onBgSplit && onBgSplit(sel.id, time)}
+                  disabled={!sel || isVO}
+                  title={isVO ? "Voiceover is locked (defines the timeline length)" : sel ? `Split "${stem(sel.name)}" at playhead (${label(time)})` : "Select an audio clip first"}
+                  onClick={() => sel && !isVO && onBgSplit && onBgSplit(sel.id, time)}
                 >✂ Split</button>
                 <button
                   type="button" className="tl__audiobar-btn"
-                  disabled={!sel}
-                  title={sel ? `Duplicate "${stem(sel.name)}"` : "Select an audio clip first"}
-                  onClick={() => sel && onBgDuplicate && onBgDuplicate(sel.id)}
+                  disabled={!sel || isVO}
+                  title={isVO ? "Voiceover is locked (defines the timeline length)" : sel ? `Duplicate "${stem(sel.name)}"` : "Select an audio clip first"}
+                  onClick={() => sel && !isVO && onBgDuplicate && onBgDuplicate(sel.id)}
                 >⧉ Duplicate</button>
                 <button
                   type="button" className="tl__audiobar-btn tl__audiobar-btn--danger"
-                  disabled={!sel}
-                  title={sel ? `Delete "${stem(sel.name)}"` : "Select an audio clip first"}
-                  onClick={() => sel && onBgDelete && onBgDelete(sel.id)}
+                  disabled={!sel || isVO}
+                  title={isVO ? "Voiceover is locked (defines the timeline length)" : sel ? `Delete "${stem(sel.name)}"` : "Select an audio clip first"}
+                  onClick={() => sel && !isVO && onBgDelete && onBgDelete(sel.id)}
                 >🗑 Delete</button>
                 {sel && (
                   <label className="tl__audiobar-vol" title={`Volume for "${stem(sel.name)}"`}>
                     <span>🔊</span>
                     <input
                       type="range" min={0} max={1.5} step={0.05}
-                      value={Math.min(1.5, sel.volume ?? 1)}
-                      onChange={(e) => onBgVolume && onBgVolume(sel.id, +e.target.value)}
+                      value={isVO ? Math.min(1.5, voiceLevel ?? 1) : Math.min(1.5, sel.volume ?? 1)}
+                      onChange={(e) => isVO
+                        ? (setVoiceLevel && setVoiceLevel(+e.target.value))
+                        : (onBgVolume && onBgVolume(sel.id, +e.target.value))}
                     />
-                    <span>{Math.round((sel.volume ?? 1) * 100)}%</span>
+                    <span>{Math.round((isVO ? (voiceLevel ?? 1) : (sel.volume ?? 1)) * 100)}%</span>
                   </label>
                 )}
                 {!sel && <span className="tl__audiobar-hint">Click an audio clip to edit it</span>}
