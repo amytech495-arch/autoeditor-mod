@@ -25,7 +25,6 @@ function tc(t) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${d}`;
 }
 
-// Editable version of the current time, e.g. 1:23.5
 function toInputTime(t) {
   if (!isFinite(t) || t < 0) t = 0;
   const m = Math.floor(t / 60);
@@ -33,7 +32,6 @@ function toInputTime(t) {
   return `${m}:${s.toFixed(1).padStart(4, "0")}`;
 }
 
-// Accept "1:23", "1:23.5", "1:02:03", "83", "83.5" → seconds, or null if unparsable.
 function parseTime(str) {
   const s = String(str).trim();
   if (!s) return null;
@@ -52,8 +50,6 @@ function clock(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// Saved configuration presets ("Save Config" panel). Kept in localStorage so
-// presets survive reloads and carry over between projects on the same machine.
 const PRESET_KEY = "autoeditor.save-config-presets.v1";
 function loadPresets() {
   try {
@@ -84,8 +80,6 @@ function encodeImageDataUrl(url) {
     img.src = url;
   });
 }
-// Reverse: turn a stored data URL back into a real File so both the browser and
-// server (upload) render paths can use the restored logo. Returns null on failure.
 function dataUrlToFile(dataUrl, fallbackName) {
   return fetch(dataUrl)
     .then((r) => r.blob())
@@ -93,7 +87,6 @@ function dataUrlToFile(dataUrl, fallbackName) {
     .catch(() => null);
 }
 
-// Fade envelope for a BG clip at time t (seconds) within the clip, 0..duration.
 function fadeGain(t, clip) {
   const dur = clip.duration || 0;
   const fi = clip.fadeIn || 0, fo = clip.fadeOut || 0;
@@ -103,7 +96,6 @@ function fadeGain(t, clip) {
   return g;
 }
 
-// Right-side tool panel, organised as a Clipchamp-style tablist.
 const SIDE_TABS = [
   { id: "effects", icon: "✦", label: "Effects" },
   { id: "captions", icon: "©", label: "Captions" },
@@ -224,7 +216,6 @@ export default function Editor({
   const [currentFx, setCurrentFx] = useState("none"); // drives "Apply … to all" in Image Effects
   const [warn4k, setWarn4k] = useState(false); // transient "4K is heavy" toast on quality select
   const warnTimer = useRef(null);
-  // Transient toast for apply/clear actions ("Transition applied", "Mix cleared"…).
   const [flash, setFlash] = useState(null);
   const [flashWarn, setFlashWarn] = useState(false);
   const flashTimerRef = useRef(null);
@@ -236,7 +227,6 @@ export default function Editor({
   useEffect(() => () => {
     clearTimeout(warnTimer.current); clearTimeout(presetMsgTimer.current); clearTimeout(flashTimerRef.current);
   }, []);
-  // Sound-effect previews are one-shots — silence any still playing on unmount.
   useEffect(() => () => stopSfxPreviews(), []);
 
   const applyLiveVoiceFx = useCallback(async (fx) => {
@@ -250,7 +240,6 @@ export default function Editor({
       try { vfxElSrcRef.current = ctx.createMediaElementSource(a); }
       catch (_) { return; } // already routed by something else — leave the preview alone
     }
-    // Swap the chain after the (permanent) element source.
     if (vfxChainRef.current) { try { vfxChainRef.current.disconnect(); } catch (_) {} vfxChainRef.current = null; }
     const nodes = buildVoiceFxNodes(ctx, fx);
     let prev = vfxElSrcRef.current;
@@ -259,7 +248,6 @@ export default function Editor({
     vfxChainRef.current = { disconnect: () => { for (const n of nodes) { try { n.disconnect(); } catch (_) {} } } };
   }, []);
 
-  // Re-sync the live preview whenever the applied effect or the voiceover changes.
   useEffect(() => {
     if (!audioUrl) return;
     if (vfxCtxRef.current || voiceFx) applyLiveVoiceFx(voiceFx).catch(() => {});
@@ -270,21 +258,17 @@ export default function Editor({
     if (a) a.volume = Math.max(0, Math.min(1, voiceLevel)); // HTML audio caps at 1; render allows 1.5
   }, [voiceLevel, audioUrl]);
 
-  // Tear down the preview graph on unmount.
   useEffect(() => () => {
     if (vfxChainRef.current) { try { vfxChainRef.current.disconnect(); } catch (_) {} vfxChainRef.current = null; }
     if (vfxCtxRef.current) { try { vfxCtxRef.current.close(); } catch (_) {} vfxCtxRef.current = null; }
     vfxElSrcRef.current = null;
   }, []);
 
-  // Voice Over Effect panel draft (effect + strength) — mirror of the applied value.
   const [vfxDraft, setVfxDraft] = useState({ effect: "none", strength: 50 });
   useEffect(() => {
     setVfxDraft({ effect: voiceFx ? voiceFx.effect : "none", strength: voiceFx ? voiceFx.strength : 50 });
   }, [voiceFx]);
 
-  // Save Config panel: saved look presets (export + transitions + motion + fx +
-  // fades + overlays + text), persisted in localStorage.
   const sideRef = useRef(null); // the scrolling <aside> — target of "↑ Back to top"
   const [sideTab, setSideTab] = useState("export");
   const presetMsgTimer = useRef(null);
@@ -348,8 +332,6 @@ export default function Editor({
       watermarkEnabled, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity,
       logoEnabled, logoUrl, logoCorner, logoSize, logoOpacity, voiceFx, textOverlays]);
 
-  // Re-apply a saved preset to the current project. Per-clip transitions / motion /
-  // effects are matched by clip name, so they only land on clips with the same names.
   const gotLogo = (c, key) => typeof c[key] === "string" && c[key].startsWith("data:image/");
   const gotWatermark = (c) => typeof c.watermarkData === "string" && c.watermarkData.startsWith("data:image/");
   const gotOverlay = (c) => typeof c.overlayData === "string" && c.overlayData.startsWith("data:image/");
@@ -375,8 +357,6 @@ export default function Editor({
     if (c.watermarkX != null && setWatermarkX) setWatermarkX(c.watermarkX);
     if (c.watermarkY != null && setWatermarkY) setWatermarkY(c.watermarkY);
     if (c.watermarkOpacity != null && setWatermarkOpacity) setWatermarkOpacity(c.watermarkOpacity);
-    // Restore the embedded logo itself so the preset brings back the overlay in
-    // one click — no re-adding (rebuilt as a File so the server upload works too).
     if (gotWatermark(c) && setWatermarkFile && setWatermarkUrl) {
       const file = await dataUrlToFile(c.watermarkData, "preset-logo.png");
       if (file) {
@@ -389,7 +369,6 @@ export default function Editor({
     if (c.logoCorner != null && setLogoCorner) setLogoCorner(c.logoCorner);
     if (c.logoSize != null && setLogoSize) setLogoSize(c.logoSize);
     if (c.logoOpacity != null && setLogoOpacity) setLogoOpacity(c.logoOpacity);
-    // Same for the corner-logo overlay when a preset embedded its image.
     if (gotLogo(c, "logoData") && setLogoFile && setLogoUrl) {
       const file = await dataUrlToFile(c.logoData, "preset-corner-logo.png");
       if (file) {
@@ -398,7 +377,6 @@ export default function Editor({
         setLogoEnabled(true);
       }
     }
-    // Same for the video-overlay panel when it held an image (logo/texture still).
     if (gotOverlay(c) && setOverlayFile && setOverlayUrl) {
       const file = await dataUrlToFile(c.overlayData, "preset-overlay.png");
       if (file) {
@@ -436,7 +414,6 @@ export default function Editor({
     if (sc && typeof sc.scrollTo === "function") sc.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  // Resolve each placed marker's source to a playable URL (library preset or upload).
   const sfxUrlFor = useCallback((src) => {
     if (!src) return null;
     if (src.kind === "lib") return src.file;
@@ -450,8 +427,6 @@ export default function Editor({
   useEffect(() => { sfxResolvedRef.current = sfxResolved; }, [sfxResolved]);
   useEffect(() => { bgClipsRef.current = bgClips; }, [bgClips]);
 
-  // One <audio> element per placed marker, reused across frames. Created lazily and
-  // volume-scaled by the lane's master gain; removed when its marker disappears.
   useEffect(() => {
     const refs = sfxAudioRefs.current;
     const live = new Set(sfxResolved.map((s) => s.id));
@@ -474,8 +449,6 @@ export default function Editor({
     }
   }, [sfxResolved, sfxMaster]);
 
-  // One <audio> element per BG clip, reused across frames; created lazily and
-  // volume-scaled per clip, removed when the clip disappears.
   useEffect(() => {
     const refs = bgAudioRefs.current;
     const live = new Set(bgClips.map((c) => c.id));
@@ -554,8 +527,6 @@ export default function Editor({
     if (uploadBg) await uploadBg(file);
   }, [uploadBg]);
 
-  // Clip inspector: click a clip → preview → optionally pick a replacement,
-  // preview it, then Apply (or Remove the image).
   const clearPend = useCallback(() => {
     setPendUrl((u) => { if (u) URL.revokeObjectURL(u); return null; });
     setPendFile(null);
@@ -591,8 +562,6 @@ export default function Editor({
     e.target.value = "";
   }, [onCaptionFile]);
 
-  // Keep one offscreen <video> per video clip so the preview can draw live frames
-  // (not just the poster). Created/torn down as clips come and go.
   useEffect(() => {
     const map = vidRefs.current;
     for (const [name, info] of Object.entries(videoInfoByName)) {
@@ -610,13 +579,10 @@ export default function Editor({
     }
   }, [videoInfoByName]);
 
-  // Where in the source video to show for a clip at playhead t: the trim in-point
-  // plus elapsed × speed (fast-forward). Mirrors the render math in page.js.
   const videoParams = useCallback((name, slotDur) => {
     const info = videoInfoByName[name];
     if (!info) return null;
     const dur = info.duration || 0;
-    // Default by length: longer-than-slot trims (1x), shorter fills the slot ("fit").
     const mode = fitByName[name] || (dur > slotDur ? "trim" : "fit");
     if (mode === "fit" && slotDur > 0 && dur > 0 && Math.abs(dur - slotDur) > 0.05) return { trimStart: 0, speed: dur / slotDur };
     return { trimStart: trimByName[name] || 0, speed: 1 };
@@ -632,8 +598,6 @@ export default function Editor({
     ctx.fillRect(0, 0, W, H);
     let activeVideo = null; // clip name whose video should be playing this frame
 
-    // Per-clip motion transform at time tt (gaps never animate). Progress is clamped so
-    // an outgoing image keeps its end-of-clip transform through the transition.
     const transformAt = (ci, tt) => {
       const c = clips[ci];
       if (!c || c.gap) return { scale: 1, offsetX: 0, offsetY: 0, rotateX: 0, rotateY: 0 };
@@ -680,8 +644,6 @@ export default function Editor({
       const tdur = type === "cut" ? 0 : Math.min(transitionDuration, clip.duration);
 
       if (idx > 0 && tdur > 0 && t < clip.start + tdur) {
-        // Inside a transition: blend the previous image into this one, each at
-        // its own current zoom so nothing snaps back to normal size.
         const p = Math.min(1, Math.max(0, (t - clip.start) / tdur));
         const fromT = transformAt(idx - 1, t);
         const toT = transformAt(idx, t);
@@ -690,8 +652,6 @@ export default function Editor({
           fromT.scale, toT.scale
         );
         ctx.globalAlpha = 1;
-        // Warm up the incoming video during the transition so it's already
-        // decoding/playing when it takes over — fixes the stall-then-smooth start.
         if (playing) primeVideo(clip, t, false);
       } else {
         let drawable = imageEls[clip.name];
@@ -712,11 +672,9 @@ export default function Editor({
           const baseScale = Math.min(W / dw, H / dh);
           const scale = baseScale * tform.scale;
           const w = dw * scale, h = dh * scale;
-          // Apply transform: translate to center, rotate, translate back, then draw
           ctx.save();
           ctx.translate(W / 2 + tform.offsetX, H / 2 + tform.offsetY);
           if (tform.rotateX || tform.rotateY) {
-            // Simulate 3D rotation with scale transform
             ctx.scale(1 - Math.abs(tform.rotateY), 1 - Math.abs(tform.rotateX));
           }
           ctx.drawImage(drawable, -w / 2, -h / 2, w, h);
@@ -725,7 +683,6 @@ export default function Editor({
       }
     }
 
-    // Image effects: burn the clip's grade + overlays in under the overlay/captions.
     if (fx && fx !== "none" && fxAmount > 0) {
       let buf = fxBufRef.current;
       if (!buf || buf.W !== W || buf.H !== H) {
@@ -737,12 +694,10 @@ export default function Editor({
       applyFx(ctx, buf.ctx, fx, fxAmount, W, H, fxName ? fxSeed(fxName) : 0, Math.floor(t * 24));
     }
 
-    // Only the clip under the playhead plays; pause every other clip's video.
     for (const [nm, v] of Object.entries(vidRefs.current)) {
       if (nm !== activeVideo && !v.paused) { try { v.pause(); } catch { /* ignore */ } }
     }
 
-    // Draw overlay video (old film texture, etc.)
     if (overlayEnabled && overlayVideoRef.current && overlayUrl) {
       const ov = overlayVideoRef.current;
       if (ov.readyState >= 2 && !ov.seeking && ov.videoWidth && ov.videoHeight) {
@@ -757,16 +712,13 @@ export default function Editor({
       }
     }
 
-    // Captions burn in before the fades, so the fade dims them too.
     if (captionsOn && captionCues && captionCues.length) {
       const cue = captionCueAt(captionCues, t);
       if (cue) drawCaption(ctx, cue.text, W, H, captionStyle, captionFontPx(H, captionSize, captionFontScale), captionLineHeight, captionAnimation, t - cue.start, cue.end - cue.start, captionFont, cue);
     }
 
-    // Timed text overlays (titles/labels) — same layer as WebCodecs + ffmpeg burn.
     if (Array.isArray(textOverlays) && textOverlays.length) drawTextOverlays(ctx, textOverlays, W, H, t);
 
-    // Scene fades (opening / ending).
     if (fadeIn > 0 && t < fadeIn) {
       ctx.globalAlpha = Math.max(0, 1 - t / fadeIn);
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
@@ -777,12 +729,10 @@ export default function Editor({
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     }
 
-    // Static image overlay (logo / watermark) on top of everything, like the render.
     const wImg = watermarkImgRef.current;
     if (watermarkEnabled && wImg && watermarkUrl) {
       drawWatermark(ctx, wImg, W, H, { size: watermarkSize, x: watermarkX, y: watermarkY, opacity: watermarkOpacity });
     }
-    // Corner logo overlay — the very top-most layer, mirroring the render.
     const lImg = logoImgRef.current;
     if (logoEnabled && lImg && logoUrl) {
       drawCornerLogo(ctx, lImg, W, H, { corner: logoCorner, size: logoSize, opacity: logoOpacity });
@@ -800,7 +750,6 @@ export default function Editor({
   useEffect(() => { draw(time); }, [time, draw]);
   useEffect(() => { setTime(0); }, [audioUrl]);
 
-  // Elapsed render timer.
   useEffect(() => {
     if (!busy && !wcBusy) { setElapsed(0); return; }
     const start = Date.now();
@@ -822,7 +771,6 @@ export default function Editor({
         return;
       }
       setTime(a.currentTime);
-      // FX-lane sound effects: fire each marker once, the frame the playhead crosses it.
       const mainT = a.currentTime;
       const prevT = sfxPrevRef.current;
       sfxPrevRef.current = mainT;
@@ -832,7 +780,6 @@ export default function Editor({
           if (el) { try { el.currentTime = 0; } catch (_) {} el.play().catch(() => {}); }
         }
       }
-      // Sync BG clips to the main audio position.
       const mainTime = a.currentTime;
       for (const c of bgClipsRef.current) {
         const el = bgAudioRefs.current.get(c.id);
@@ -849,7 +796,6 @@ export default function Editor({
           el.pause();
         }
       }
-      // Sync overlay video
       if (overlayEnabled && overlayVideoRef.current && overlayUrl) {
         const ov = overlayVideoRef.current;
         const mainTime = a.currentTime;
@@ -863,11 +809,9 @@ export default function Editor({
     };
     const onPlay = () => {
       setPlaying(true);
-      // Keep the voice-over effect preview graph audible (resume on the play gesture).
       if (vfxCtxRef.current && vfxCtxRef.current.state === "suspended") {
         try { vfxCtxRef.current.resume(); } catch (_) {}
       }
-      // Start crossing detection from the current position (never retro-fire markers).
       sfxPrevRef.current = a.currentTime;
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(loop);
@@ -894,8 +838,6 @@ export default function Editor({
     const a = audioRef.current;
     if (!a) return;
     if (a.paused) {
-      // The narration element is routed through the AudioContext once an effect has
-      // been applied, so make sure that context is audible when playback starts.
       if (vfxCtxRef.current && vfxCtxRef.current.state === "suspended") {
         try { vfxCtxRef.current.resume(); } catch (_) {}
       }
@@ -909,15 +851,12 @@ export default function Editor({
     if (!a) return;
     const c = Math.min(Math.max(t, 0), duration || t || 0);
     setTime(c);
-    // A seek repositions the playhead: silence in-flight effects and rebase the
-    // crossing detector so nothing fires for markers we skipped over.
     sfxPrevRef.current = c;
     for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
     if (a.seeking) pendingSeekRef.current = c;
     else {
       pendingSeekRef.current = null;
       try { a.currentTime = c; } catch (_) {}
-      // Reposition BG clips that fall under the new playhead.
       for (const clip of bgClips) {
         const el = bgAudioRefs.current.get(clip.id);
         if (!el) continue;
@@ -945,7 +884,6 @@ export default function Editor({
     if (el) el.scrollTo({ left: el.scrollWidth, behavior: "smooth" });
   }, [seek, exportDuration, duration]);
 
-  // Editable "time now" box: click to type a target time, Enter/blur to seek.
   const [timeDraft, setTimeDraft] = useState(null);
   const startEditTime = useCallback(() => setTimeDraft(toInputTime(time)), [time]);
   const commitEditTime = useCallback(() => {
@@ -976,20 +914,15 @@ export default function Editor({
     const a = audioRef.current;
     scrubResumeRef.current = !!(a && !a.paused);
     if (a && !a.paused) { try { a.pause(); } catch (_) {} }
-    // Pause BG clips
     for (const el of bgAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
-    // Silence any in-flight sound effects while scrubbing.
     for (const el of sfxAudioRefs.current.values()) { if (!el.paused) { try { el.pause(); } catch (_) {} } }
   }, []);
   const onScrubEnd = useCallback(() => {
     const a = audioRef.current;
-    // Rebase crossing detection at the release position (no retro-fire on resume).
     if (a) sfxPrevRef.current = a.currentTime;
     const wasPlaying = scrubResumeRef.current;
     scrubResumeRef.current = false;
     if (a && wasPlaying) a.play().catch(() => {});
-    // Resume BG clips only when playback is actually resuming — a plain click on
-    // the scrub strip repositions the playhead and must stay silent.
     if (a && wasPlaying) {
       for (const clip of bgClips) {
         const el = bgAudioRefs.current.get(clip.id);
@@ -2272,20 +2205,25 @@ export default function Editor({
             onApply={(blob) => { setLogoEditOpen(false); onLogoEdit && onLogoEdit(blob); }}
           />
         )}
-      {cropOpen && inspect && imageEls[inspect] && imageEls[inspect].url && (
+      {cropOpen && (() => {
+        const el = inspect && imageEls[inspect];
+        const url = el && (el.url || el.src);
+        if (!url) return null;
+        return (
           <LogoEditor
-            src={imageEls[inspect].url}
+            src={url}
             title="Crop image"
             onClose={() => setCropOpen(false)}
             onApply={(blob) => {
               setCropOpen(false);
               if (replaceImage && blob) {
-                const file = new File([blob], imageEls[inspect].fileName || "cropped.png", { type: "image/png" });
+                const file = new File([blob], (el && el.fileName) || "cropped.png", { type: "image/png" });
                 replaceImage(inspect, file);
               }
             }}
           />
-        )}
+        );
+      })()}
         {/* --- Text overlays --- */}
         <div className="panel video-overlay">
           <h2 className="panel__h">Text overlays</h2>
@@ -2414,7 +2352,6 @@ export default function Editor({
         const longer = !!(vdur && insClip && vdur > slotDur + 0.05);
         const shorter = !!(vdur && insClip && vdur < slotDur - 0.05);
         const diff = longer || shorter;
-        // Default by length: longer clip trims (1x), shorter fills the slot (fit/slow).
         const fitMode = fitByName[inspect] || (longer ? "trim" : "fit");
         const speed = (diff && slotDur > 0) ? (vdur / slotDur) : 1;
         return (
@@ -2430,8 +2367,6 @@ export default function Editor({
 
               <div className="modal__stage">
                 {pendUrl ? (
-                  // A chosen-but-not-applied replacement: a video needs a <video>,
-                  // not an <img> (an <img> with a video URL just shows black).
                   pendIsVid
                     ? <video src={pendUrl} className="modal__stagevid" controls muted playsInline preload="metadata" />
                     : <img src={pendUrl} alt="" />
@@ -2629,6 +2564,37 @@ export default function Editor({
       })()}
       {(() => {
         if (bgOpen == null) return null;
+        if (bgOpen === "voiceover" && voiceoverClip) {
+          const vc = voiceoverClip;
+          return (
+            <div className="modal" role="dialog" aria-modal="true" onClick={() => setBgOpen && setBgOpen(null)}>
+              <div className="modal__card" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
+                <div className="modal__head">
+                  <span className="modal__title">
+                    🎙 {vc.name} <span className="modal__at">· {vc.duration.toFixed(1)}s</span>
+                  </span>
+                  <button className="modal__x" onClick={() => setBgOpen && setBgOpen(null)} aria-label="Close">✕</button>
+                </div>
+                <div className="modal__vol">
+                  <span className="modal__motion-label">Volume</span>
+                  <div className="modal__slider">
+                    <input
+                      type="range" min={0} max={1.5} step={0.05} value={Math.min(1.5, voiceLevel ?? 1)}
+                      onChange={(e) => setVoiceLevel && setVoiceLevel(+e.target.value)}
+                    />
+                    <span className="trdur__val">{Math.round((voiceLevel ?? 1) * 100)}%</span>
+                  </div>
+                </div>
+                <div className="modal__hint" style={{ marginTop: 8 }}>
+                  The voiceover defines the timeline length — trim, split, duplicate and delete are disabled to keep your images in sync.
+                </div>
+                <div className="modal__actions" style={{ marginTop: 14 }}>
+                  <button className="mbtn" onClick={() => setBgOpen && setBgOpen(null)}>Done</button>
+                </div>
+              </div>
+            </div>
+          );
+        }
         const c = bgClips.find((x) => x.id === bgOpen);
         if (!c) return null;
         const maxFade = Math.max(0.1, Math.min(3, c.duration / 2));
@@ -2672,6 +2638,15 @@ export default function Editor({
                 </div>
               </div>
               <div className="modal__actions" style={{ marginTop: 14 }}>
+                <button
+                  className="mbtn"
+                  onClick={() => { splitBgClip && splitBgClip(c.id, time); setBgOpen && setBgOpen(null); }}
+                  title="Split at playhead"
+                >✂ Split</button>
+                <button
+                  className="mbtn"
+                  onClick={() => { duplicateBgClip && duplicateBgClip(c.id); setBgOpen && setBgOpen(null); }}
+                >⧉ Duplicate</button>
                 <button
                   className="mbtn mbtn--danger"
                   onClick={() => { removeBgClip && removeBgClip(c.id); }}
