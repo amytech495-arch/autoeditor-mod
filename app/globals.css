@@ -561,6 +561,10 @@ body {
 /* BG lane: background-music clips placed on the timeline. */
 .tl__tag--bg { height: 40px; color: #9db4ff; }
 .tl__lane--bg { height: 40px; margin-top: 6px; background: var(--panel-2); cursor: copy; overflow: hidden; }
+.tl__lane--voiceover { height: 40px; margin-top: 6px; background: var(--panel-2); overflow: hidden; position: relative; border-left: 3px solid var(--accent); }
+.tl__lane-tag { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 600; color: var(--text-dim); pointer-events: none; z-index: 2; background: rgba(0,0,0,.45); padding: 2px 6px; border-radius: 4px; }
+.bgclip--voiceover { cursor: pointer; border: 1px solid var(--accent); }
+.bgclip--voiceover.is-sel { outline: 2px solid var(--accent); }
 .bgclip {
   position: absolute; top: 0; bottom: 0; z-index: 2; cursor: grab; overflow: hidden;
   border-radius: 6px; background: rgba(120,150,255,.16);
