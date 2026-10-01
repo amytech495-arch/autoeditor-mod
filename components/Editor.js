@@ -163,6 +163,24 @@ export default function Editor({
 }) {
   const canvasRef = useRef(null);
   const viewerRef = useRef(null);
+  const onViewerResizeDown = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = viewerRef.current;
+    if (!el) return;
+    const startY = e.clientY;
+    const h0 = el.offsetHeight;
+    const move = (ev) => {
+      const dh = ev.clientY - startY;
+      setViewerH(Math.max(200, Math.min(window.innerHeight - 100, h0 + dh)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, []);
   const [fsOn, setFsOn] = useState(false);
   const toggleFullscreen = useCallback(() => {
     const el = viewerRef.current;
@@ -188,6 +206,7 @@ export default function Editor({
   const logoInputRef = useRef(null);
   const [logoEditOpen, setLogoEditOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
+  const [viewerH, setViewerH] = useState(null); // null = flex auto
   const [renameVal, setRenameVal] = useState("");
   const [renameErr, setRenameErr] = useState(null);
   const rafRef = useRef(0);
@@ -997,7 +1016,7 @@ export default function Editor({
   return (
     <section className="editor">
       <div className="main">
-        <div className="viewer" ref={viewerRef}>
+        <div className="viewer" ref={viewerRef} style={viewerH ? { height: viewerH, flex: "none" } : undefined}>
           <div className="viewer__frame">
             <canvas ref={canvasRef} width={dims.width} height={dims.height} className="viewer__canvas" />
           </div>
@@ -1099,6 +1118,11 @@ export default function Editor({
           />
           <img ref={watermarkImgRef} src={watermarkUrl} alt="" hidden />
           <img ref={logoImgRef} src={logoUrl} alt="" hidden />
+          <span
+            className="viewer__resize"
+            title="Drag to resize preview"
+            onPointerDown={onViewerResizeDown}
+          />
         </div>
 
         {(() => {
