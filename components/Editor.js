@@ -660,7 +660,8 @@ export default function Editor({
         const dh = (drawable && (drawable.videoHeight || drawable.naturalHeight)) || 0;
         if (drawable && dw && dh) {
           const tform = transformAt(idx, t);
-          if (bgFillMode === "blur") {
+          const _mismatch = Math.abs((dw / dh) - (W / H)) / (W / H);
+          if (bgFillMode === "blur" && _mismatch > 0.02) {
             const cov = Math.max(W / dw, H / dh);
             const bw = dw * cov, bh = dh * cov;
             ctx.save();
