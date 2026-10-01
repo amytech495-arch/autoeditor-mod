@@ -600,6 +600,28 @@ export default function Home() {
     }));
   }, [commitDoc]);
 
+  // Rename an image (including replaced ones). The new name must keep a
+  // parseable timestamp (e.g. "0-05.jpg") — it repositions the clip.
+  const renameImage = useCallback(async (id, newName) => {
+    const { parseTimestampName } = await import("../lib/timestamp");
+    const secs = parseTimestampName(newName);
+    if (secs == null) return { ok: false, error: 'Name must be timestamp format (e.g. "0-05.jpg")' };
+    let ok = false;
+    commitDoc((d) => ({
+      ...d,
+      slots: d.slots.map((s) => {
+        if (s.id !== id || !s.file) return s;
+        ok = true;
+        const file = new File([s.file], newName, { type: s.file.type });
+        const img = s.img ? Object.assign(Object.create(Object.getPrototypeOf(s.img)), s.img, { fileName: newName }) : s.img;
+        // For image elements, just update the property directly
+        if (s.img) s.img.fileName = newName;
+        return { ...s, file, seconds: secs, img: s.img };
+      }),
+    }));
+    return { ok };
+  }, [commitDoc]);
+
   // Discard a staged image entirely (used in the pre-build import tray).
   const discardImage = useCallback((id) => {
     commitDoc((d) => ({ ...d, slots: d.slots.filter((s) => s.id !== id) }));
@@ -1731,7 +1753,7 @@ export default function Home() {
           wcEnabled={wcEnabled} setWcEnabled={setWcEnabled}
           onRender={onRender} onCancel={onCancel} busy={busy} progress={progress}
           outUrl={outUrl} error={error} warnings={warnings}
-          replaceImage={replaceImage} removeImage={removeImage} fillGap={fillGap} duplicateImage={duplicateImage}
+          replaceImage={replaceImage} removeImage={removeImage} fillGap={fillGap} duplicateImage={duplicateImage} renameImage={renameImage}
           resizeBoundary={resizeBoundary}
           transitionsByName={transitionsByName} transitionDuration={transitionDuration}
           setTransition={setTransition} applyTransitionAll={applyTransitionAll}
