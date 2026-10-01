@@ -618,7 +618,7 @@ export default function Timeline({
 
           {/* Add-image button: filenames must be timestamp format (validated on pick). */}
           <input
-            type="file" accept="image/*,video/*" multiple hidden
+            type="file" accept="image/*" multiple hidden
             ref={imgInputRef}
             onChange={(e) => { onAddImages && onAddImages(e.target.files); e.target.value = ""; }}
           />
