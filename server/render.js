@@ -33,13 +33,34 @@ const extraFontSrc = (file) =>
 
 // ---------- pure: build the ffmpeg argument array ----------
 
-function vfChain(width, height, fps) {
+// Fit an image/video to W×H. mode "blur" fills non-matching areas with a
+// blurred copy of the same frame; "black" pads with black bars.
+function fitWithBg(i, W, H, bgFill = {}, tag = `v${i}`) {
+  const { mode = "black", blur = 24, opacity = 0.7 } = bgFill;
+  if (mode === "blur") {
+    const bOp = Math.max(0, Math.min(1, +opacity || 0.7));
+    return `[${i}:v]split=2[bg${i}][fg${i}];` +
+      `[bg${i}]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+      `crop=${W}:${H},boxblur=${Math.round(blur)}:2,format=rgba,` +
+      `colorchannelmixer=aa=${bOp.toFixed(3)},format=yuv420p[bgf${i}];` +
+      `[fg${i}]scale=${W}:${H}:force_original_aspect_ratio=decrease,setsar=1[fgf${i}];` +
+      `[bgf${i}][fgf${i}]overlay=(W-w)/2:(H-h)/2,setsar=1[${tag}]`;
+  }
+  return `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
+    `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1[${tag}]`;
+}
+
+function vfChain(width, height, fps, bgFill) {
+  // Note: callers that need blur-bg use fitWithBg directly.
   return `scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
     `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p`;
 }
 
 // A still (no-zoom) clip stream: scale/pad to the canvas.
-function stillStream(i, width, height, fps) {
+function stillStream(i, width, height, fps, bgFill) {
+  if (bgFill && bgFill.mode === "blur") {
+    return fitWithBg(i, width, height, bgFill, `fit${i}`) + `,fps=${fps},format=yuv420p[v${i}]`;
+  }
   return `[${i}:v]${vfChain(width, height, fps)}[v${i}]`;
 }
 
@@ -65,14 +86,20 @@ function atempoChain(speed) {
 // the slot (`speed` > 1 = fast-forward, via setpts), clone the last frame to fill
 // any slot still longer than the footage (tpad), cut to exactly `span`, and reset
 // PTS. With motion, an animated Ken Burns zoom is layered on (zoompan d=1).
-function videoStream(i, W, H, fps, span, motionType, amount, speed = 1) {
+function videoStream(i, W, H, fps, span, motionType, amount, speed = 1, bgFill = {}) {
   const S = span.toFixed(3);
   // speed > 1 fast-forwards, speed < 1 slows down (both via setpts) so the whole
   // clip fills its slot. tpad clone still backstops any residual short footage.
   const changed = speed > 0 && Math.abs(speed - 1) > 0.001;
   const spd = changed ? `,setpts=(PTS-STARTPTS)/${speed.toFixed(4)}` : "";
-  const base = `[${i}:v]${vfChain(W, H, fps)}${spd},` +
-    `tpad=stop_mode=clone:stop_duration=${S},trim=duration=${S},setpts=PTS-STARTPTS`;
+  let base;
+  if (bgFill.mode === "blur") {
+    base = fitWithBg(i, W, H, bgFill, `fit${i}`) + `${spd},` +
+      `tpad=stop_mode=clone:stop_duration=${S},trim=duration=${S},setpts=PTS-STARTPTS`;
+  } else {
+    base = `[${i}:v]${vfChain(W, H, fps)}${spd},` +
+      `tpad=stop_mode=clone:stop_duration=${S},trim=duration=${S},setpts=PTS-STARTPTS`;
+  }
   if (!motionType || motionType === "none") {
     // Re-timebase to CFR after a speed change so downstream xfade/encode stay clean.
     return `${base}${changed ? `,fps=${fps}` : ""}[v${i}]`;
@@ -93,14 +120,30 @@ function videoStream(i, W, H, fps, span, motionType, amount, speed = 1) {
 // The supersample factor drives most of zoom's CPU/RAM cost, so it's tunable:
 // RENDER_ZOOM_SS (default 3 = smoothest; phones set 2 to stay responsive).
 const ZOOM_SS = Math.max(1, Math.min(3, parseFloat(process.env.RENDER_ZOOM_SS || "3")));
-function zoomStream(i, W, H, fps, motionType, amount, frames) {
+function zoomStream(i, W, H, fps, motionType, amount, frames, bgFill = {}) {
   const A = amount.toFixed(4);
   const FR = Math.max(2, frames);
   const z = motionType === "zoomout" ? `1+${A}-(on/${FR - 1})*${A}` : `1+(on/${FR - 1})*${A}`;
   const M = ZOOM_SS;
   const PW = Math.round(W * M), PH = Math.round(H * M);
-  const pre = `[${i}:v]scale=${PW}:${PH}:force_original_aspect_ratio=decrease,` +
-    `pad=${PW}:${PH}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
+  const { mode = "black", blur = 24, opacity = 0.7 } = bgFill;
+  let pre;
+  if (mode === "blur") {
+    // Blurred-background fill: same image scaled to COVER, blurred and dimmed
+    // as the base, with the sharp fit-scaled image overlaid on top.
+    // Blur is scaled for the supersampled resolution.
+    const bBlur = Math.round(blur * M);
+    const bOp = Math.max(0, Math.min(1, +opacity || 0.7));
+    pre = `[${i}:v]split=2[bg${i}][fg${i}];` +
+      `[bg${i}]scale=${PW}:${PH}:force_original_aspect_ratio=increase,` +
+      `crop=${PW}:${PH},boxblur=${bBlur}:2,format=rgba,` +
+      `colorchannelmixer=aa=${bOp.toFixed(3)},format=yuv420p[bgf${i}];` +
+      `[fg${i}]scale=${PW}:${PH}:force_original_aspect_ratio=decrease,setsar=1[fgf${i}];` +
+      `[bgf${i}][fgf${i}]overlay=(W-w)/2:(H-h)/2,setsar=1`;
+  } else {
+    pre = `[${i}:v]scale=${PW}:${PH}:force_original_aspect_ratio=decrease,` +
+      `pad=${PW}:${PH}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
+  }
   const zp = `zoompan=z='${z}':d=${FR}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${fps}`;
   return `${pre},${zp},format=yuv420p[v${i}]`;
 }
@@ -246,13 +289,13 @@ function buildVideoChain(clips, paths, { width, height, fps, transitions, transi
       const inSec = Math.max(0, (trims && +trims[i]) || 0);
       const spd = speeds && +speeds[i] > 0 ? +speeds[i] : 1;
       inputs.push("-ss", inSec.toFixed(3), "-i", paths[i]);
-      parts.push(videoStream(i, width, height, fps, span, motTypes[i], motionAmount, spd));
+      parts.push(videoStream(i, width, height, fps, span, motTypes[i], motionAmount, spd, bgFill));
     } else if (motTypes[i] === "none") {
       inputs.push("-loop", "1", "-t", span.toFixed(3), "-i", paths[i]);
-      parts.push(stillStream(i, width, height, fps));
+      parts.push(stillStream(i, width, height, fps, bgFill));
     } else {
       inputs.push("-i", paths[i]);
-      parts.push(zoomStream(i, width, height, fps, motTypes[i], motionAmount, Math.round(span * fps)));
+      parts.push(zoomStream(i, width, height, fps, motTypes[i], motionAmount, Math.round(span * fps), bgFill));
     }
   }
   let last = "v0";
@@ -281,7 +324,7 @@ function sfxClipFilters(s) {
   return out;
 }
 
-function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, logoName = null, logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false, sfxClips = [], voiceFx, voiceLevel = 1 }, filterFiles) {
+function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, logoName = null, logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false, sfxClips = [], voiceFx, voiceLevel = 1, bgFill = {} }, filterFiles) {
   const n = clips.length;
   const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds });
   let last = vEnd;
@@ -576,6 +619,7 @@ function buildSegmentedPlan(spec, io) {
 // io:   { paths: string[] (per-clip basenames), audioName, capChain, encoder }
 export function buildRenderPlan(spec, io) {
   const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.2, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
+    bgFillMode = "black", bgBlur = 24, bgOpacity = 0.7,
     voiceFx, voiceLevel = 1,
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false,
@@ -600,17 +644,18 @@ export function buildRenderPlan(spec, io) {
   // FX-lane sound effects can only be mixed in the filter-graph path (concat has
   // no per-marker audio inputs), so their presence also forces the graph.
   const hasSfx = Array.isArray(sfxClips) && sfxClips.length > 0;
-  const useGraph = hasTransition || hasMotion || hasVideo || hasOverlay || hasWatermark || hasLogo || hasSfx;
+  const bgFill = { mode: bgFillMode, blur: bgBlur, opacity: bgOpacity };
+  const useGraph = hasTransition || hasMotion || hasVideo || hasOverlay || hasWatermark || hasLogo || hasSfx || bgFill.mode === "blur";
   // Big graph timelines are split into segments + a join to dodge the OS limits.
   if (useGraph && clips.length > SEGMENT_MAX) return buildSegmentedPlan(spec, io);
-  const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, textChain, encoder,
+  const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, textChain, encoder, bgFill,
     voiceFx, voiceLevel,
     overlayName, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
     watermarkName, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
     logoName, logoCorner, logoSize, logoOpacity, logoEnabled, sfxClips };
   const filterFiles = [];
   const args = useGraph
-    ? graphArgs({ ...common, transitions, transitionDuration, motions, motionAmount, trims, volumes, speeds, audible }, filterFiles)
+    ? graphArgs({ ...common, transitions, transitionDuration, motions, motionAmount, trims, volumes, speeds, audible, bgFill }, filterFiles)
     : concatArgs(common, filterFiles);
   return { mode: useGraph ? "graph" : "concat", total, args, filterFiles };
 }
