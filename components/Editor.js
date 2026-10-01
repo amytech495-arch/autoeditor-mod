@@ -164,22 +164,12 @@ export default function Editor({
   const canvasRef = useRef(null);
   const viewerRef = useRef(null);
   const onViewerResizeDown = useCallback((e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const el = viewerRef.current;
-    if (!el) return;
-    const startY = e.clientY;
-    const h0 = el.offsetHeight;
-    const move = (ev) => {
-      const dh = ev.clientY - startY;
-      setViewerH(Math.max(200, Math.min(window.innerHeight - 100, h0 + dh)));
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    e.stopPropagation(); e.preventDefault();
+    const el = viewerRef.current; if (!el) return;
+    const sy = e.clientY, h0 = el.offsetHeight;
+    const mv = (ev) => setViewerH(Math.max(200, Math.min(window.innerHeight - 100, h0 + ev.clientY - sy)));
+    const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
   }, []);
   const [fsOn, setFsOn] = useState(false);
   const toggleFullscreen = useCallback(() => {
@@ -206,29 +196,18 @@ export default function Editor({
   const logoInputRef = useRef(null);
   const [logoEditOpen, setLogoEditOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
-  const [viewerH, setViewerH] = useState(null); // null = flex auto
-  const [timelineH, setTimelineH] = useState(null); // null = auto
+  const [viewerH, setViewerH] = useState(null);
+  const [timelineH, setTimelineH] = useState(null);
   const timelineWrapRef = useRef(null);
   const onTimelineResizeDown = useCallback((e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const el = timelineWrapRef.current;
-    if (!el) return;
-    const startY = e.clientY;
-    const h0 = el.offsetHeight;
-    const move = (ev) => {
-      const dh = startY - ev.clientY; // drag up = taller
-      setTimelineH(Math.max(160, Math.min(window.innerHeight - 100, h0 + dh)));
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    e.stopPropagation(); e.preventDefault();
+    const el = timelineWrapRef.current; if (!el) return;
+    const sy = e.clientY, h0 = el.offsetHeight;
+    const mv = (ev) => setTimelineH(Math.max(160, Math.min(window.innerHeight - 100, h0 + sy - ev.clientY)));
+    const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
   }, []);
-  const [renameVal, setRenameVal] = useState("");
-  const [renameErr, setRenameErr] = useState(null);
+  const [renameVal, setRenameVal] = useState(""); const [renameErr, setRenameErr] = useState(null);
   const rafRef = useRef(0);
   const fileInputRef = useRef(null);
   const capInputRef = useRef(null);
@@ -250,12 +229,12 @@ export default function Editor({
   useEffect(() => { trimEndRef.current = exportDuration; }, [exportDuration]);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0); // seconds spent in the current render
-  const [selectedCut, setSelectedCut] = useState(null); // selected clip name (drives transition)
+  const [elapsed, setElapsed] = useState(0);
+  const [selectedCut, setSelectedCut] = useState(null);
   const [currentType, setCurrentType] = useState("fadeblack");
-  const [currentMotion, setCurrentMotion] = useState("dynamic"); // drives "Apply … to all" in Advanced Motion
-  const [currentFx, setCurrentFx] = useState("none"); // drives "Apply … to all" in Image Effects
-  const [warn4k, setWarn4k] = useState(false); // transient "4K is heavy" toast on quality select
+  const [currentMotion, setCurrentMotion] = useState("dynamic");
+  const [currentFx, setCurrentFx] = useState("none");
+  const [warn4k, setWarn4k] = useState(false);
   const warnTimer = useRef(null);
   const [flash, setFlash] = useState(null);
   const [flashWarn, setFlashWarn] = useState(false);
@@ -315,7 +294,7 @@ export default function Editor({
   const presetMsgTimer = useRef(null);
   const [presets, setPresets] = useState(loadPresets);
   const [presetName, setPresetName] = useState("");
-  const [presetMsg, setPresetMsg] = useState(null); // transient saved/applied note
+  const [presetMsg, setPresetMsg] = useState(null);
 
   const persistPresets = useCallback((next) => {
     setPresets(next);
@@ -512,17 +491,17 @@ export default function Editor({
     }
   }, [bgClips]);
 
-  const [inspect, setInspect] = useState(null);   // slot name open in the inspector
-  const [dismissedWarn, setDismissedWarn] = useState(() => new Set()); // hidden warning texts
-  const [timelineZoom, setTimelineZoom] = useState(1); // 0.5 to 4
+  const [inspect, setInspect] = useState(null);
+  const [dismissedWarn, setDismissedWarn] = useState(() => new Set());
+  const [timelineZoom, setTimelineZoom] = useState(1);
   const [coarse, setCoarse] = useState(false);
   useEffect(() => {
     try { setCoarse(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch { /* ignore */ }
   }, []);
-  const [pendFile, setPendFile] = useState(null);  // chosen replacement, not yet applied
+  const [pendFile, setPendFile] = useState(null);
   const [pendUrl, setPendUrl] = useState(null);
-  const [mixMode, setMixMode] = useState(false); // Transitions panel in random-mix mode
-  const [mixPicks, setMixPicks] = useState(() => new Set()); // ephemeral: chosen transitions for the random mix
+  const [mixMode, setMixMode] = useState(false);
+  const [mixPicks, setMixPicks] = useState(() => new Set());
   const toggleMix = useCallback((id) => {
     setMixPicks((prev) => {
       const next = new Set(prev);
@@ -688,6 +667,17 @@ export default function Editor({
         const p = Math.min(1, Math.max(0, (t - clip.start) / tdur));
         const fromT = transformAt(idx - 1, t);
         const toT = transformAt(idx, t);
+        // Blurred bg during transitions (incoming clip, if aspect mismatches).
+        if (bgFillMode === "blur") {
+          const td = imageEls[clip.name];
+          const tw = (td && (td.videoWidth || td.naturalWidth)) || 0;
+          const th = (td && (td.videoHeight || td.naturalHeight)) || 0;
+          if (td && tw && th && Math.abs((tw / th) - (W / H)) / (W / H) > 0.02) {
+            const cov = Math.max(W / tw, H / th), bw = tw * cov, bh = th * cov;
+            ctx.save(); ctx.filter = `blur(${bgBlur}px)`; ctx.globalAlpha = bgOpacity;
+            ctx.drawImage(td, (W - bw) / 2, (H - bh) / 2, bw, bh); ctx.restore();
+          }
+        }
         transitionOf(type).canvas(
           ctx, imageEls[clips[idx - 1].name] || null, imageEls[clip.name] || null, p, W, H,
           fromT.scale, toT.scale
@@ -2450,7 +2440,7 @@ export default function Editor({
                     type="button"
                     className="mbtn mbtn--ghost"
                     style={{ marginLeft: 8, padding: "2px 8px", fontSize: 11 }}
-                    title="Rename this image (must keep timestamp format, e.g. 0-05.jpg)"
+                    title="Rename (keep timestamp format, e.g. 0-05.jpg)"
                     onClick={() => {
                       setRenameVal((el && el.fileName) || "");
                       setRenameErr(null);
@@ -2464,7 +2454,7 @@ export default function Editor({
                     type="text"
                     value={renameVal}
                     onChange={(e) => { setRenameVal(e.target.value); setRenameErr(null); }}
-                    placeholder='e.g. 0-05.jpg'
+                    placeholder="0-05.jpg"
                     style={{ flex: 1, padding: "6px 8px", fontSize: 13 }}
                   />
                   <button
