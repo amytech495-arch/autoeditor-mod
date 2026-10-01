@@ -63,6 +63,30 @@ FIXED — Duplicate media imports
   Re-picking files in the "Add media" picker (or dropping a folder twice) no
   longer adds the same files twice. The editor collapses files it already has.
 
+NEW — Corner logo overlay
+  A new Logo Overlay panel (right below Image Overlay) drops a small logo in
+  any corner — pick + enlarge or lock to a corner — sized and faded to taste.
+  It bakes into the preview and both exports and can be embedded in Save
+  Config presets.
+
+NEW — Per-clip Mute toggle
+  Open any video clip and hit Mute to silence just that clip's sound during
+  preview and export; the audio-volume slider is kept so Unmute restores it.
+
+NEW — Drop files onto the timeline
+  Drag images or videos straight onto the timeline's video lane and they're
+  imported by their timestamp name — folders work too, exactly like the "Add
+  media" buttons.
+
+NEW — Frame ratio in one click
+  A 16:9 / 9:16 toggle sits right in the transport bar, so the preview and the
+  export match instantly. On the import page, the ratio also auto-detects
+  from your first image (portrait → 9:16, landscape → 16:9).
+
+NEW — Numbered voiceover series
+  Drop several narration files — 1.mp3, 2.mp3, 3.mp3… — and they're merged, in
+  order, into a single voiceover track for the timeline and both exports.
+
 
 Version 1.5
 =========
