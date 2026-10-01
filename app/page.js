@@ -370,6 +370,51 @@ export default function Home() {
     setBgOpen((o) => (o === id ? null : o));
   }, []);
 
+  // Split a BG clip into two at timeline time `at` (CapCut-style cut).
+  const splitBgClip = useCallback((id, at) => {
+    let newId = null;
+    setBgClips((prev) => {
+      const i = prev.findIndex((c) => c.id === id);
+      if (i < 0) return prev;
+      const c = prev[i];
+      const cutAt = Math.min(Math.max(at, c.start + 0.2), c.start + c.duration - 0.2);
+      if (!(cutAt > c.start && cutAt < c.start + c.duration)) return prev;
+      const leftDur = cutAt - c.start;
+      newId = `bg${bgIdRef.current++}`;
+      const left = { ...c, duration: leftDur };
+      const right = {
+        ...c,
+        id: newId,
+        start: cutAt,
+        offset: (c.offset || 0) + leftDur,
+        duration: c.duration - leftDur,
+        url: c.file ? URL.createObjectURL(c.file) : c.url,
+      };
+      const next = [...prev];
+      next.splice(i, 1, left, right);
+      return next;
+    });
+    return newId;
+  }, []);
+
+  // Duplicate a BG clip, placing the copy right after the original.
+  const duplicateBgClip = useCallback((id) => {
+    let newId = null;
+    setBgClips((prev) => {
+      const c = prev.find((x) => x.id === id);
+      if (!c || !c.file) return prev;
+      newId = `bg${bgIdRef.current++}`;
+      const copy = {
+        ...c,
+        id: newId,
+        start: c.start + c.duration,
+        url: URL.createObjectURL(c.file),
+      };
+      return [...prev, copy];
+    });
+    return newId;
+  }, []);
+
   // --- Sound effects (FX lane) ----------------------------------------------
   const addSfx = useCallback((at) => {
     if (!selectedSound) return;
@@ -493,6 +538,21 @@ export default function Home() {
       setImporting(null);
     }
   }, [commitDoc]);
+
+  // Add images from the timeline: filenames MUST encode a timestamp
+  // (e.g. "0-05.jpg") — anything else is rejected with an error.
+  const addTimelineImages = useCallback(async (fileList) => {
+    const { parseTimestampName } = await import("../lib/timestamp");
+    const files = Array.from(fileList || []);
+    const bad = files.filter((f) => parseTimestampName(f.name) == null);
+    if (bad.length) {
+      setError(
+        `Image name must be in timestamp format (e.g. "0-05.jpg") — rejected: ${bad.map((f) => f.name).join(", ")}`
+      );
+      return;
+    }
+    if (files.length) await addImages(files);
+  }, [addImages]);
 
   // Swap the image/video in one slot, keeping its timestamp.
   const replaceImage = useCallback(async (id, file) => {
@@ -1637,6 +1697,8 @@ export default function Home() {
           syncStatus={syncStatus} syncAligned={syncAligned}
           bgClips={bgClips} selectedBg={selectedBg} uploadBg={uploadBg}
           addBgClip={addBgClip} moveBgClip={moveBgClip} setBgVolume={setBgVolume}
+          splitBgClip={splitBgClip} duplicateBgClip={duplicateBgClip} removeBgClip={removeBgClip}
+          bgOpen={bgOpen} setBgOpen={setBgOpen} addTimelineImages={addTimelineImages}
           updateBgClip={updateBgClip}
           removeBgClip={removeBgClip} bgOpen={bgOpen} setBgOpen={setBgOpen}
           sfx={sfx} addSfx={addSfx} moveSfx={moveSfx} setSfxVolume={setSfxVolume}
