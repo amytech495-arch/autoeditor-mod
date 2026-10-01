@@ -120,6 +120,7 @@ export default function Editor({
   onWebCodecsTest, onWebCodecsCancel, wcBusy, wcProgress, wcPhase, wcAvailable, serverAvailable, wcEnabled, setWcEnabled,
   replaceImage, removeImage, fillGap, duplicateImage, resizeBoundary,
   bgFillMode = "blur", setBgFillMode, bgBlur = 24, setBgBlur, bgOpacity = 0.7, setBgOpacity,
+  voiceoverClip = null,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
   fadeIn, setFadeIn, fadeOut, setFadeOut,
   motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
@@ -266,7 +267,7 @@ export default function Editor({
 
   useEffect(() => {
     const a = audioRef.current;
-    if (a) a.volume = Math.max(0, Math.min(1, voiceLevel));
+    if (a) a.volume = Math.max(0, Math.min(1, voiceLevel)); // HTML audio caps at 1; render allows 1.5
   }, [voiceLevel, audioUrl]);
 
   // Tear down the preview graph on unmount.
@@ -1208,6 +1209,7 @@ export default function Editor({
           onResizeBoundary={resizeBoundary}
           trimEnd={trimEnd}
           onTrimChange={setTrimEnd}
+          voiceoverClip={voiceoverClip} voiceLevel={voiceLevel} setVoiceLevel={setVoiceLevel}
           bgClips={bgClips}
           onBgAdd={addBgClip}
           onBgMove={moveBgClip}
