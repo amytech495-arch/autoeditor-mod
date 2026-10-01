@@ -68,6 +68,8 @@ export default function Timeline({
 }) {
   const [bgLaneH, setBgLaneH] = useState(40);
   const [voLaneH, setVoLaneH] = useState(40);
+  const [videoLaneH, setVideoLaneH] = useState(64);
+  const [fxLaneH, setFxLaneH] = useState(28);
   const trackRef = useRef(null);
   const laneDragRef = useRef(null);
   const onLaneResizeDown = useCallback((e, setH) => {
@@ -400,7 +402,12 @@ export default function Timeline({
         </div>
 
         <div className="tl__track" ref={trackRef}>
-          <div className="tl__lane tl__lane--video">
+          <div className="tl__lane tl__lane--video" style={{ height: videoLaneH }}>
+            <span
+              className="tl__lane-resize"
+              title="Drag to resize track height"
+              onPointerDown={(e) => onLaneResizeDown(e, setVideoLaneH)}
+            />
             {clips.map((c, i) => {
               let cStart = c.start, cDur = c.duration;
               if (drag) {
@@ -467,9 +474,15 @@ export default function Timeline({
 
           <div
             className="tl__lane tl__lane--fx"
+            style={{ height: fxLaneH }}
             onPointerDown={onFxLaneDown}
             title="Click to place the selected sound · drag a marker to move · click a marker to edit"
           >
+            <span
+              className="tl__lane-resize"
+              title="Drag to resize track height"
+              onPointerDown={(e) => onLaneResizeDown(e, setFxLaneH)}
+            />
             {sfx.map((s) => (
               <button
                 key={s.id}
