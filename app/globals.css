@@ -1497,3 +1497,27 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
 
 .cap-replace--danger { color: #ff6b6b; }
 .cap-replace--danger:hover { text-decoration: underline; }
+
+/* Timeline audio editor toolbar (under the BG lane). */
+.tl__audiobar {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+  padding: 6px 10px; border-radius: 8px; background: var(--panel-2);
+  font-size: 12px;
+}
+.tl__audiobar-label { font-weight: 700; opacity: .8; }
+.tl__audiobar-btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border, #333);
+  background: var(--panel2, #1c1c1e); color: inherit; cursor: pointer; font-size: 12px;
+}
+.tl__audiobar-btn:disabled { opacity: .35; cursor: default; }
+.tl__audiobar-btn:not(:disabled):hover { border-color: var(--accent, #0a84ff); }
+.tl__audiobar-btn--danger:not(:disabled):hover { border-color: #ff6b6b; color: #ff6b6b; }
+.tl__audiobar-vol { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
+.tl__audiobar-vol input[type="range"] { width: 110px; }
+.tl__audiobar-hint { opacity: .5; font-size: 11px; }
+.tl__addimg {
+  margin-top: 6px; padding: 5px 12px; border-radius: 8px;
+  border: 1px dashed var(--border, #444); background: transparent;
+  color: inherit; cursor: pointer; font-size: 12px;
+}
+.tl__addimg:hover { border-color: var(--accent, #0a84ff); border-style: solid; }
