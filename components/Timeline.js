@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
 import { transitionOf } from "../lib/transitions";
-import { collectDropFiles } from "./Dropzone";
 
 function label(t) {
   const m = Math.floor(t / 60);
@@ -57,30 +56,21 @@ function Waveform({ peaks, style }) {
 export default function Timeline({
   clips, imageEls, duration, time, activeName, badClips,
   transitionsByName, motionByName, selectedName, onSelect,
-  onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onAddFiles, onResizeBoundary,
+  onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onResizeBoundary,
   trimEnd, onTrimChange,
   zoom = 1,
   scrollRef,
   bgClips = [], onBgAdd, onBgMove, onBgTrim, onBgOpen,
+  onBgSplit, onBgDuplicate, onBgDelete, onBgVolume, selectedBgId,
+  onAddImages,
   sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
 }) {
   const trackRef = useRef(null);
+  const imgInputRef = useRef(null);
   const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
   const [hover, setHover] = useState(null); // time under the mouse, for the hover indicator
   const [pop, setPop] = useState(null); // one-shot time-chip pop on click, { t, id }
   const popIdRef = useRef(0);
-  const [over, setOver] = useState(false); // a file is being dragged over the video lane
-
-  // Accept a dropped image/video (or folder) straight onto the video lane: the
-  // files are re-collected exactly like the import buttons and handed to the
-  // same addImages pipeline, which places them by their timestamped names.
-  const onDropFiles = useCallback(async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOver(false);
-    const files = await collectDropFiles(e, "image/*,video/*");
-    if (files.length && onAddFiles) onAddFiles(files);
-  }, [onAddFiles]);
 
   const onHoverMove = useCallback((e) => {
     const el = trackRef.current;
@@ -386,12 +376,7 @@ export default function Timeline({
         </div>
 
         <div className="tl__track" ref={trackRef}>
-          <div
-            className={["tl__lane", "tl__lane--video", over ? "is-over" : ""].filter(Boolean).join(" ")}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setOver(true); }}
-            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
-            onDrop={onDropFiles}
-          >
+          <div className="tl__lane tl__lane--video">
             {clips.map((c, i) => {
               let cStart = c.start, cDur = c.duration;
               if (drag) {
@@ -511,6 +496,60 @@ export default function Timeline({
           <div className="tl__playhead" style={{ left: pctZoom(time) }}>
             <span className="tl__playhead-grip" />
           </div>
+
+          {/* Audio editor toolbar: acts on the selected BG clip (or the clip under the playhead). */}
+          {(() => {
+            const sel = bgClips.find((c) => c.id === selectedBgId)
+              || bgClips.find((c) => time >= c.start && time < c.start + c.duration)
+              || null;
+            return (
+              <div className="tl__audiobar">
+                <span className="tl__audiobar-label">🎚 Audio</span>
+                <button
+                  type="button" className="tl__audiobar-btn"
+                  disabled={!sel}
+                  title={sel ? `Split "${stem(sel.name)}" at playhead (${label(time)})` : "Select an audio clip first"}
+                  onClick={() => sel && onBgSplit && onBgSplit(sel.id, time)}
+                >✂ Split</button>
+                <button
+                  type="button" className="tl__audiobar-btn"
+                  disabled={!sel}
+                  title={sel ? `Duplicate "${stem(sel.name)}"` : "Select an audio clip first"}
+                  onClick={() => sel && onBgDuplicate && onBgDuplicate(sel.id)}
+                >⧉ Duplicate</button>
+                <button
+                  type="button" className="tl__audiobar-btn tl__audiobar-btn--danger"
+                  disabled={!sel}
+                  title={sel ? `Delete "${stem(sel.name)}"` : "Select an audio clip first"}
+                  onClick={() => sel && onBgDelete && onBgDelete(sel.id)}
+                >🗑 Delete</button>
+                {sel && (
+                  <label className="tl__audiobar-vol" title={`Volume for "${stem(sel.name)}"`}>
+                    <span>🔊</span>
+                    <input
+                      type="range" min={0} max={1.5} step={0.05}
+                      value={Math.min(1.5, sel.volume ?? 1)}
+                      onChange={(e) => onBgVolume && onBgVolume(sel.id, +e.target.value)}
+                    />
+                    <span>{Math.round((sel.volume ?? 1) * 100)}%</span>
+                  </label>
+                )}
+                {!sel && <span className="tl__audiobar-hint">Click an audio clip to edit it</span>}
+              </div>
+            );
+          })()}
+
+          {/* Add-image button: filenames must be timestamp format (validated on pick). */}
+          <input
+            type="file" accept="image/*,video/*" multiple hidden
+            ref={imgInputRef}
+            onChange={(e) => { onAddImages && onAddImages(e.target.files); e.target.value = ""; }}
+          />
+          <button
+            type="button" className="tl__addimg"
+            title="Add image(s) — filenames must be timestamp format (e.g. 0-05.jpg)"
+            onClick={() => imgInputRef.current && imgInputRef.current.click()}
+          >+ Image</button>
 
           {trimmed && (
             <div
