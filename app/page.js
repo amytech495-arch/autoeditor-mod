@@ -188,6 +188,9 @@ export default function Home() {
   const [logoOpacity, setLogoOpacity] = useState(0.9);
   const [logoEnabled, setLogoEnabled] = useState(false);
   const [aspect, setAspect] = useState("16:9");
+  const [bgFillMode, setBgFillMode] = useState("blur"); // "blur" | "black"
+  const [bgBlur, setBgBlur] = useState(24);             // px, preview canvas
+  const [bgOpacity, setBgOpacity] = useState(0.7);      // 0..1
   const [fps, setFps] = useState(30);
   const [renderQuality, setRenderQuality] = useState("full"); // "full" | "720p"
   const [transitionDuration, setTransitionDuration] = useState(DEFAULT_TRANSITION_DURATION);
@@ -1075,7 +1078,7 @@ export default function Home() {
   // Serialize the edit state (no media bytes) for the projects store.
   const buildProjectData = useCallback(() => ({
     v: 1,
-    settings: { aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd },
+    settings: { aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd, bgFillMode, bgBlur, bgOpacity },
     maps: { motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName },
     captions: { captionRaw, captionName, captionsOn, captionStyle, captionFont, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionMode },
     transitionsByName,
@@ -1097,7 +1100,7 @@ export default function Home() {
     voiceLevel,
     idCounter: idRef.current,
     built,
-  }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd,
+  }), [aspect, fps, renderQuality, transitionDuration, fadeIn, fadeOut, motionAmount, fxAmount, trimEnd, bgFillMode, bgBlur, bgOpacity,
       motionByName, fxByName, trimByName, volumeByName, muteByName, fitByName,
       captionRaw, captionName, captionsOn, captionStyle, captionSize, captionLineHeight, captionFontScale, captionAnimation, captionMode,
       transitionsByName, slots, audioFile, bgClips, sfx, sfxUploads, sfxMaster, voiceFx, voiceLevel, built]);
@@ -1206,6 +1209,7 @@ export default function Home() {
       resetDoc({ slots: newSlots, transitionsByName: d.transitionsByName || {} });
       const st = d.settings || {};
       setAspect(st.aspect ?? "16:9"); setFps(st.fps ?? 30); setRenderQuality(st.renderQuality ?? "full");
+      setBgFillMode(st.bgFillMode ?? "blur"); setBgBlur(st.bgBlur ?? 24); setBgOpacity(st.bgOpacity ?? 0.7);
       setTransitionDuration(st.transitionDuration ?? DEFAULT_TRANSITION_DURATION);
       setFadeIn(st.fadeIn ?? 0.5); setFadeOut(st.fadeOut ?? 0.6);
       setMotionAmount(st.motionAmount ?? 0.2); setTrimEnd(st.trimEnd ?? 0);
@@ -1319,6 +1323,7 @@ export default function Home() {
         watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         logoFile, logoUrl, logoCorner, logoSize, logoOpacity, logoEnabled,
         textOverlays,
+        bgFillMode, bgBlur, bgOpacity,
         onProgress: setProgress,
       });
       setOutUrl(URL.createObjectURL(blob));
@@ -1432,6 +1437,7 @@ export default function Home() {
           overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
           watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
           logoFile, logoUrl, logoCorner, logoSize, logoOpacity, logoEnabled,
+          bgFillMode, bgBlur, bgOpacity,
         },
         imagesByName,
         (frac, phase) => { setWcProgress(frac); if (phase) setWcPhase(phase); },
@@ -1705,6 +1711,9 @@ export default function Home() {
           clips={clips} imageEls={imageEls} audioUrl={audioUrl}
           duration={audioDuration} peaks={peaks} dims={dims}
           aspect={aspect} setAspect={setAspect} fps={fps} setFps={setFps}
+          bgFillMode={bgFillMode} setBgFillMode={setBgFillMode}
+          bgBlur={bgBlur} setBgBlur={setBgBlur}
+          bgOpacity={bgOpacity} setBgOpacity={setBgOpacity}
           renderQuality={renderQuality} setRenderQuality={setRenderQuality} renderDims={renderDims}
           onWebCodecsTest={onWebCodecsTest} onWebCodecsCancel={onWebCodecsCancel}
           wcBusy={wcBusy} wcProgress={wcProgress} wcPhase={wcPhase} wcAvailable={wcOk} serverAvailable={serverAvailable}
