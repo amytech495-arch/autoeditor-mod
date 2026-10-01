@@ -275,7 +275,7 @@ function transitionDur(transitions, transitionDuration, k, frame) {
 // xfade chain) for a list of clips whose `.start` is relative to THIS chain's t=0.
 // Returns { inputs, parts, last } — `last` is the composited video label. Shared by
 // the single-pass render and by each segment of a segmented render.
-function buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, speeds }) {
+function buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, speeds, bgFill = {} }) {
   const n = clips.length;
   const frame = 1 / fps;
   const tdur = (k) => transitionDur(transitions, transitionDuration, k, frame);
@@ -285,17 +285,19 @@ function buildVideoChain(clips, paths, { width, height, fps, transitions, transi
   const parts = [];
   for (let i = 0; i < n; i++) {
     const span = (i < n - 1 ? clips[i].duration + tdur(i + 1) : clips[i].duration) + 2 * frame;
+    const clipBg = (bgFill.mode === "blur" && !aspectMatches(dims[i], width, height))
+      ? bgFill : { ...bgFill, mode: "black" };
     if (isVideoPath(paths[i]) && !clips[i].gap) {
       const inSec = Math.max(0, (trims && +trims[i]) || 0);
       const spd = speeds && +speeds[i] > 0 ? +speeds[i] : 1;
       inputs.push("-ss", inSec.toFixed(3), "-i", paths[i]);
-      parts.push(videoStream(i, width, height, fps, span, motTypes[i], motionAmount, spd, bgFill));
+      parts.push(videoStream(i, width, height, fps, span, motTypes[i], motionAmount, spd, clipBg));
     } else if (motTypes[i] === "none") {
       inputs.push("-loop", "1", "-t", span.toFixed(3), "-i", paths[i]);
-      parts.push(stillStream(i, width, height, fps, bgFill));
+      parts.push(stillStream(i, width, height, fps, clipBg));
     } else {
       inputs.push("-i", paths[i]);
-      parts.push(zoomStream(i, width, height, fps, motTypes[i], motionAmount, Math.round(span * fps), bgFill));
+      parts.push(zoomStream(i, width, height, fps, motTypes[i], motionAmount, Math.round(span * fps), clipBg));
     }
   }
   let last = "v0";
@@ -324,9 +326,9 @@ function sfxClipFilters(s) {
   return out;
 }
 
-function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, logoName = null, logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false, sfxClips = [], voiceFx, voiceLevel = 1, bgFill = {} }, filterFiles) {
+function graphArgs({ clips, paths, audioName, width, height, fps, transitions, transitionDuration, motions, motionAmount = 0.2, trims, volumes, speeds, audible, fadeIn, fadeOut, total, capChain, textChain = "", encoder, overlayName = null, overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false, watermarkName = null, watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false, logoName = null, logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false, sfxClips = [], voiceFx, voiceLevel = 1, bgFill = {}, dims = [] }, filterFiles) {
   const n = clips.length;
-  const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds });
+  const { inputs, parts, last: vEnd } = buildVideoChain(clips, paths, { width, height, fps, transitions, transitionDuration, motions, motionAmount, trims, speeds, bgFill });
   let last = vEnd;
   let overlayInputs = [];
   if (overlayEnabled && overlayName) {
@@ -487,6 +489,7 @@ function buildConcatAudioArgs({ audioName, audioClips, sfxClips = [], fadeIn, fa
 // cut appears within a hard cap, a boundary is forced (that one crossfade becomes a cut).
 function buildSegmentedPlan(spec, io) {
   const { clips, width, height, fps = 30, transitions, transitionDuration = 0.4, motions, motionAmount = 0.2, trims, volumes, speeds, fadeIn = 0, fadeOut = 0,
+    bgFillMode = "black", bgBlur = 24, bgOpacity = 0.7,
     captions, captionStyle = "classic", captionFont = "classic", captionSize = "md", captionLineHeight, captionFontScale, captionAnimation = "none",
     textOverlays,
     voiceFx, voiceLevel = 1,
@@ -494,6 +497,7 @@ function buildSegmentedPlan(spec, io) {
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false,
     logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false } = spec;
   const { paths, audioName, encoder = "libx264", audible, overlayName = null, watermarkName = null, logoName = null, sfxClips = [] } = io;
+  const bgFill = { mode: bgFillMode, blur: bgBlur, opacity: bgOpacity };
   const n = clips.length;
   const frame = 1 / fps;
   const tdur = (k) => transitionDur(transitions, transitionDuration, k, frame);
@@ -521,7 +525,7 @@ function buildSegmentedPlan(spec, io) {
     segOff[s] = acc; acc += segDur; // cut boundaries → segments just abut, no overlap
     const slice = (a) => (Array.isArray(a) ? a.slice(clo, chi + 1) : a);
     const { inputs, parts, last: vEnd } = buildVideoChain(segClips, slice(paths), {
-      width, height, fps, transitions: slice(transitions), transitionDuration, motions: slice(motions), motionAmount, trims: slice(trims), speeds: slice(speeds),
+      width, height, fps, transitions: slice(transitions), transitionDuration, motions: slice(motions), motionAmount, trims: slice(trims), speeds: slice(speeds), bgFill,
     });
     let last = vEnd;
     let overlayInputs = [];
@@ -624,7 +628,7 @@ export function buildRenderPlan(spec, io) {
     overlayDuration = 0, overlayOpacity = 0.3, overlayBlendMode = "overlay", overlayLoop = true, overlayEnabled = false,
     watermarkSize = 0.15, watermarkX = 0.8, watermarkY = 0.88, watermarkOpacity = 0.9, watermarkEnabled = false,
     logoCorner = "br", logoSize = 0.12, logoOpacity = 0.9, logoEnabled = false } = spec;
-  const { paths, audioName, capChain = "", textChain = "", encoder = "libx264", audible, overlayName = null, watermarkName = null, logoName = null, sfxClips = [] } = io;
+  const { paths, audioName, capChain = "", textChain = "", encoder = "libx264", audible, overlayName = null, watermarkName = null, logoName = null, sfxClips = [], dims = [] } = io;
   const total = clips.length ? clips[clips.length - 1].start + clips[clips.length - 1].duration : 0;
   const hasTransition = Array.isArray(transitions) && clips.length >= 2 &&
     transitions.some((t, i) => i > 0 && t && t !== "cut");
@@ -648,14 +652,14 @@ export function buildRenderPlan(spec, io) {
   const useGraph = hasTransition || hasMotion || hasVideo || hasOverlay || hasWatermark || hasLogo || hasSfx || bgFill.mode === "blur";
   // Big graph timelines are split into segments + a join to dodge the OS limits.
   if (useGraph && clips.length > SEGMENT_MAX) return buildSegmentedPlan(spec, io);
-  const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, textChain, encoder, bgFill,
+  const common = { clips, paths, audioName, width, height, fps, fadeIn, fadeOut, total, capChain, textChain, encoder, bgFill, dims,
     voiceFx, voiceLevel,
     overlayName, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
     watermarkName, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
     logoName, logoCorner, logoSize, logoOpacity, logoEnabled, sfxClips };
   const filterFiles = [];
   const args = useGraph
-    ? graphArgs({ ...common, transitions, transitionDuration, motions, motionAmount, trims, volumes, speeds, audible, bgFill }, filterFiles)
+    ? graphArgs({ ...common, transitions, transitionDuration, motions, motionAmount, trims, volumes, speeds, audible, bgFill, dims }, filterFiles)
     : concatArgs(common, filterFiles);
   return { mode: useGraph ? "graph" : "concat", total, args, filterFiles };
 }
@@ -710,6 +714,23 @@ function probeHasAudio(dir, file) {
   });
 }
 
+// Probe image/video dimensions via ffmpeg's stderr (e.g. "Video: png, 1920x1080").
+function probeDimensions(dir, file) {
+  return new Promise((resolve) => {
+    execFile(FFMPEG, ["-hide_banner", "-i", file], { cwd: dir, timeout: 15000 }, (_err, _out, stderr) => {
+      const m = /Video:[^\n]*?(\d{2,5})x(\d{2,5})/.exec(stderr || "");
+      resolve(m ? { w: +m[1], h: +m[2] } : null);
+    });
+  });
+}
+
+// True if the media's aspect ratio matches W:H within 2% — no bg fill needed.
+function aspectMatches(dim, W, H) {
+  if (!dim || !dim.w || !dim.h) return true; // unknown → assume it fits
+  const a = dim.w / dim.h, b = W / H;
+  return Math.abs(a - b) / b <= 0.02;
+}
+
 // Generate a solid black frame for gap clips using ffmpeg's lavfi color source.
 function makeBlack(dir, width, height) {
   return new Promise((resolve, reject) => {
@@ -734,6 +755,11 @@ export async function writeInputs(dir, spec, fileMap) {
   if (needBlack) await makeBlack(dir, width, height);
 
   const paths = clips.map((c) => (c.gap ? "black.png" : fileMap[c.name]));
+
+  // Probe dimensions so the bg-fill can skip true 16:9 images (no blur needed).
+  const dims = await Promise.all(paths.map((p, i) =>
+    (clips[i].gap ? Promise.resolve(null) : probeDimensions(dir, p).catch(() => null))
+  ));
 
   // Concat file list (used only when there are no transitions; harmless otherwise).
   let concat = "";
@@ -784,7 +810,7 @@ export async function writeInputs(dir, spec, fileMap) {
     }))
     .filter((s) => s.path);
 
-  return { paths, audioName, capChain, textChain, audible, overlayName, watermarkName, logoName, sfxClips };
+  return { paths, audioName, capChain, textChain, audible, overlayName, watermarkName, logoName, sfxClips, dims };
 }
 
 // Parse ffmpeg -progress output → fraction in [0,1].
