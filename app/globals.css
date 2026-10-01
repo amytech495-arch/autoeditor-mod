@@ -478,7 +478,7 @@ body {
 .tl__ruler.tl__scrub { border-radius: 6px; }
 .tl__ruler.tl__scrub:hover { background: rgba(255,255,255,.04); }
 .tl__lane { position: relative; border-radius: 8px; background: var(--panel-2); overflow: hidden; }
-.tl__lane--video { height: 62px; }
+.tl__lane--video { height: 62px; position: relative; }
 .tl__lane--audio { height: 40px; margin-top: 6px; }
 /* Audio layers must let their hover "+" badge and volume popover float out. */
 .tl__lane--layer { overflow: visible; }
@@ -512,7 +512,7 @@ body {
 .tl__tag--audio { height: 40px; color: var(--teal); }
 .tl__tag--fx { height: 26px; color: var(--faint); }
 /* FX lane: click empty space to drop the selected sound; markers are draggable. */
-.tl__lane--fx { height: 26px; margin-top: 6px; background: var(--panel-2); cursor: copy; overflow: visible; }
+.tl__lane--fx { height: 26px; margin-top: 6px; background: var(--panel-2); cursor: copy; overflow: visible; position: relative; }
 .sfxmark {
   position: absolute; top: 0; bottom: 0;
   display: flex; align-items: center; gap: 3px; padding: 0;
