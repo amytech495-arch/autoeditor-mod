@@ -207,6 +207,26 @@ export default function Editor({
   const [logoEditOpen, setLogoEditOpen] = useState(false);
   const [cropOpen, setCropOpen] = useState(false);
   const [viewerH, setViewerH] = useState(null); // null = flex auto
+  const [timelineH, setTimelineH] = useState(null); // null = auto
+  const timelineWrapRef = useRef(null);
+  const onTimelineResizeDown = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = timelineWrapRef.current;
+    if (!el) return;
+    const startY = e.clientY;
+    const h0 = el.offsetHeight;
+    const move = (ev) => {
+      const dh = startY - ev.clientY; // drag up = taller
+      setTimelineH(Math.max(160, Math.min(window.innerHeight - 100, h0 + dh)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, []);
   const [renameVal, setRenameVal] = useState("");
   const [renameErr, setRenameErr] = useState(null);
   const rafRef = useRef(0);
@@ -1149,6 +1169,16 @@ export default function Editor({
           );
         })()}
 
+        <div
+          className="timeline-wrap"
+          ref={timelineWrapRef}
+          style={timelineH ? { height: timelineH, flex: "none" } : undefined}
+        >
+          <span
+            className="timeline-wrap__resize"
+            title="Drag to resize timeline"
+            onPointerDown={onTimelineResizeDown}
+          />
         <Timeline
           clips={clips}
           imageEls={imageEls}
@@ -1188,6 +1218,7 @@ export default function Editor({
           onSfxMove={moveSfx}
           onSfxOpen={setSfxOpen}
         />
+        </div>
       </div>
 
       <aside className="side" ref={sideRef}>
