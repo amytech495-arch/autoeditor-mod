@@ -562,10 +562,8 @@ body {
 .tl__tag--bg { height: 40px; color: #9db4ff; }
 .tl__lane--bg { height: 40px; margin-top: 6px; background: var(--panel-2); cursor: copy; overflow: hidden; position: relative; }
 .tl__lane--voiceover { height: 40px; margin-top: 6px; background: var(--panel-2); overflow: hidden; position: relative; border-left: 3px solid var(--accent); }
-.tl__lane-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 10px; cursor: ns-resize; z-index: 5;
-  background: linear-gradient(to bottom, transparent 3px, #e5484d 3px, #e5484d 5px, #46a758 5px, #46a758 7px, transparent 7px);
-  opacity: 0.9; }
-.tl__lane-resize:hover { opacity: 1; height: 12px; }
+.tl__lane-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; z-index: 5; opacity: 0; transition: opacity .15s; }
+.tl__lane:hover .tl__lane-resize { opacity: 1; background: var(--accent); }
 .tl__lane-tag { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 600; color: var(--text-dim); pointer-events: none; z-index: 2; background: rgba(0,0,0,.45); padding: 2px 6px; border-radius: 4px; }
 .bgclip--voiceover { cursor: pointer; border: 1px solid var(--accent); }
 .bgclip--voiceover.is-sel { outline: 2px solid var(--accent); }
