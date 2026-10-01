@@ -3,13 +3,15 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 
 // Logo editor: crop, rotate, and circle-crop an uploaded logo.
 // Renders the result to a PNG blob on Apply.
-export default function LogoEditor({ src, onApply, onClose }) {
+export default function LogoEditor({ src, onApply, onClose, title = "Edit logo" }) {
   const canvasRef = useRef(null);
   const [img, setImg] = useState(null);
   const [rotation, setRotation] = useState(0); // 0, 90, 180, 270
   const [circle, setCircle] = useState(false);
   // Crop rect in image pixels (after rotation is applied for display).
   const [crop, setCrop] = useState(null);
+  // Aspect ratio lock: null = free (any ratio), otherwise w/h.
+  const [ratio, setRatio] = useState(null);
   const dragRef = useRef(null);
 
   // Load the image.
@@ -136,6 +138,14 @@ export default function LogoEditor({ src, onApply, onClose }) {
       if (d.id.includes("s")) h = Math.max(10, o.h + dy);
       if (d.id.includes("w")) { w = Math.max(10, o.w - dx); x = o.x + (o.w - w); }
       if (d.id.includes("n")) { h = Math.max(10, o.h - dy); y = o.y + (o.h - h); }
+      // Ratio lock: derive h from w (or w from h for n/s handles).
+      if (ratio) {
+        if (d.id.includes("e") || d.id.includes("w")) h = w / ratio;
+        else w = h * ratio;
+        // Keep the locked edge anchored for w/n handles.
+        if (d.id.includes("w")) x = o.x + (o.w - w);
+        if (d.id.includes("n")) y = o.y + (o.h - h);
+      }
       x = Math.max(0, Math.min(x, dispW - 10));
       y = Math.max(0, Math.min(y, dispH - 10));
       w = Math.min(w, dispW - x);
@@ -206,13 +216,30 @@ export default function LogoEditor({ src, onApply, onClose }) {
     setCrop({ x: 0, y: 0, w: dispW, h: dispH });
     setRotation(0);
     setCircle(false);
+    setRatio(null);
+  };
+
+  // Apply an aspect ratio to the current crop (centered, as large as possible).
+  const applyRatio = (r) => {
+    setRatio(r);
+    if (!r || !crop) return;
+    const cx = crop.x + crop.w / 2, cy = crop.y + crop.h / 2;
+    let w = crop.w, h = w / r;
+    if (h > crop.h) { h = crop.h; w = h * r; }
+    // Clamp inside the image.
+    w = Math.min(w, dispW); h = Math.min(h, dispH);
+    setCrop({
+      x: Math.min(Math.max(0, cx - w / 2), dispW - w),
+      y: Math.min(Math.max(0, cy - h / 2), dispH - h),
+      w, h,
+    });
   };
 
   return (
     <div className="modal" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal__card" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <span className="modal__title">Edit logo</span>
+          <span className="modal__title">{title}</span>
           <button className="modal__x" onClick={onClose} aria-label="Close">✕</button>
         </div>
         <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
@@ -225,6 +252,17 @@ export default function LogoEditor({ src, onApply, onClose }) {
           />
         </div>
         <div className="mini-h" style={{ marginTop: 12 }}>Drag the blue box to crop — pull corners to resize</div>
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+          {[[null, "Free"], [16 / 9, "16:9"], [1, "1:1"], [9 / 16, "9:16"], [4 / 3, "4:3"]].map(([r, lbl]) => (
+            <button
+              key={lbl}
+              type="button"
+              className={`trchip${ratio === r ? " is-on" : ""}`}
+              onClick={() => applyRatio(r)}
+              style={{ fontSize: 11, padding: "5px 10px" }}
+            >{lbl}</button>
+          ))}
+        </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           <button type="button" className="mbtn" onClick={() => rotate(-90)}>⟲ Rotate left</button>
           <button type="button" className="mbtn" onClick={() => rotate(90)}>⟳ Rotate right</button>
