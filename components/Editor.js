@@ -63,10 +63,6 @@ function loadPresets() {
   } catch { return []; }
 }
 
-// Downscale + PNG-encode an image URL into a small data URL so a preset can
-// carry the logo itself (localStorage is capped, so keep it compact — a logo
-// needs to stay crisp, but a 256px PNG is plenty at typical sizes). Returns
-// null when the image fails to load or is too big to store.
 const WATERMARK_MAX_PX = 256;
 const WATERMARK_MAX_CHARS = 400000; // ~300 KB raw before base64
 function encodeImageDataUrl(url) {
@@ -123,6 +119,7 @@ export default function Editor({
   onRender, onCancel, busy, progress, outUrl, error, warnings,
   onWebCodecsTest, onWebCodecsCancel, wcBusy, wcProgress, wcPhase, wcAvailable, serverAvailable, wcEnabled, setWcEnabled,
   replaceImage, removeImage, fillGap, duplicateImage, resizeBoundary,
+  bgFillMode = "blur", setBgFillMode, bgBlur = 24, setBgBlur, bgOpacity = 0.7, setBgOpacity,
   transitionsByName, transitionDuration, setTransition, applyTransitionAll, applyTransitionMix, setTransitionDuration,
   fadeIn, setFadeIn, fadeOut, setFadeOut,
   motionByName, setMotion, applyMotionAll, applyMotionAlternate, applyMotionMix, motionAmount, setMotionAmount,
@@ -186,9 +183,6 @@ export default function Editor({
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
   const audioRef = useRef(null);
-  // Voice-over effect live preview: the narration <audio> element is routed through
-  // an AudioContext chain once the user applies an effect. vfxElSrc is created once
-  // per element; the node chain after it is rebuilt on every change.
   const vfxCtxRef = useRef(null);       // AudioContext (lazily created on Apply)
   const vfxElSrcRef = useRef(null);     // MediaElementAudioSourceNode
   const vfxChainRef = useRef(null);     // live node chain of the current effect
@@ -244,9 +238,6 @@ export default function Editor({
   // Sound-effect previews are one-shots — silence any still playing on unmount.
   useEffect(() => () => stopSfxPreviews(), []);
 
-  // Route the narration element through the AudioContext chain matching the applied
-  // voice-over effect. Once routed, the element's audio ONLY flows through this
-  // graph, so every rebuild ends at ctx.destination (an empty node list = passthrough).
   const applyLiveVoiceFx = useCallback(async (fx) => {
     const a = audioRef.current;
     const CtxCls = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
@@ -273,9 +264,6 @@ export default function Editor({
     if (vfxCtxRef.current || voiceFx) applyLiveVoiceFx(voiceFx).catch(() => {});
   }, [voiceFx, audioUrl, applyLiveVoiceFx]);
 
-  // Voice-over master volume: scale the preview element directly. When the audio
-  // is routed through the AudioContext (an effect is applied) the element's own
-  // .volume still affects the MediaElementAudioSourceNode, so this works either way.
   useEffect(() => {
     const a = audioRef.current;
     if (a) a.volume = Math.max(0, Math.min(1, voiceLevel));
@@ -314,10 +302,6 @@ export default function Editor({
     presetMsgTimer.current = setTimeout(() => setPresetMsg(null), 4500);
   }, []);
 
-  // Snapshot the current look into a preset. Video overlay FILES stay session-only
-  // blob URLs (too big for localStorage), but both overlay panels — the texture
-  // layer and the watermark logo — get their image embedded as a compact PNG, so
-  // applying the preset restores them without re-adding.
   const savePreset = useCallback(async () => {
     const name = presetName.trim();
     if (!name) { flashPresetMsg("Give the preset a name first."); return; }
@@ -344,9 +328,6 @@ export default function Editor({
       const data = await encodeImageDataUrl(logoUrl);
       if (data) config.logoData = data;
     }
-    // Overlay textures toothe video-overlay panel can hold an image (a logo/light
-    // leak/grain still) — embed that too when it is one. Actual video files fail to
-    // decode as an image and are simply left for manual re-adding.
     if (overlayEnabled && overlayUrl) {
       const data = await encodeImageDataUrl(overlayUrl);
       if (data) config.overlayData = data;
@@ -519,10 +500,6 @@ export default function Editor({
   const [inspect, setInspect] = useState(null);   // slot name open in the inspector
   const [dismissedWarn, setDismissedWarn] = useState(() => new Set()); // hidden warning texts
   const [timelineZoom, setTimelineZoom] = useState(1); // 0.5 to 4
-  // On touch devices, accept="image/*"/"video/*" makes Android open Google Photos,
-  // which renames files and breaks the timestamp. Dropping accept opens the Files
-  // picker instead (keeps 0-04.mp4). onPick* still filter by type, so nothing bad
-  // gets through. Same trick as Dropzone.
   const [coarse, setCoarse] = useState(false);
   useEffect(() => {
     try { setCoarse(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch { /* ignore */ }
@@ -672,10 +649,6 @@ export default function Editor({
       };
     };
 
-    // Start/keep a clip's offscreen <video> playing in sync with the playhead and
-    // mark it active (so it isn't paused). Returns the element to draw, or null if
-    // it isn't a ready-to-draw video. Called both while a clip is showing AND
-    // during the transition INTO it, so the video is already warm when revealed.
     const primeVideo = (c, tt, wantDraw) => {
       const vinfo = videoInfoByName[c.name];
       if (!vinfo) return null;
@@ -720,15 +693,21 @@ export default function Editor({
         // decoding/playing when it takes over — fixes the stall-then-smooth start.
         if (playing) primeVideo(clip, t, false);
       } else {
-        // While PLAYING, draw live video frames (kept warm since the transition);
-        // paused/scrubbing shows the still poster — seeking a paused, offscreen
-        // video flashes black on many (mobile) browsers, so we don't seek it.
         let drawable = imageEls[clip.name];
         if (playing) { const vEl = primeVideo(clip, t, true); if (vEl) drawable = vEl; }
         const dw = (drawable && (drawable.videoWidth || drawable.naturalWidth)) || 0;
         const dh = (drawable && (drawable.videoHeight || drawable.naturalHeight)) || 0;
         if (drawable && dw && dh) {
           const tform = transformAt(idx, t);
+          if (bgFillMode === "blur") {
+            const cov = Math.max(W / dw, H / dh);
+            const bw = dw * cov, bh = dh * cov;
+            ctx.save();
+            ctx.filter = `blur(${bgBlur}px)`;
+            ctx.globalAlpha = bgOpacity;
+            ctx.drawImage(drawable, (W - bw) / 2, (H - bh) / 2, bw, bh);
+            ctx.restore();
+          }
           const baseScale = Math.min(W / dw, H / dh);
           const scale = baseScale * tform.scale;
           const w = dw * scale, h = dh * scale;
@@ -923,9 +902,6 @@ export default function Editor({
     } else a.pause();
   }, []);
 
-  // Coalesce rapid scrub seeks: while a seek is still settling (slow for WAV),
-  // remember the latest target and apply it on 'seeked', so the drag's release
-  // position always wins instead of being dropped mid-seek.
   const pendingSeekRef = useRef(null);
   const seek = useCallback((t) => {
     const a = audioRef.current;
@@ -994,10 +970,6 @@ export default function Editor({
     return () => a.removeEventListener("seeked", onSeeked);
   }, [audioUrl]);
 
-// Scrubbing a *playing* WAV backward doesn't take — the seek fights live
-  // playback and the release position is lost (MP3 settles fast enough to hide
-  // this). So pause on grab, let the drag seek freely, then resume from the
-  // release point once the pointer is up.
   const scrubResumeRef = useRef(false);
   const onScrubStart = useCallback(() => {
     const a = audioRef.current;
@@ -1311,6 +1283,36 @@ export default function Editor({
                 </select>
               </span>
             </label>
+          <div className="mini-h" style={{ marginTop: 10 }}>Background fill (non-16:9 images)</div>
+          <div className="ctrl-row">
+            <label className="ctrl">
+              <span className="ctrl__label">Fill</span>
+              <span className="selectwrap">
+                <select value={bgFillMode} onChange={(e) => setBgFillMode && setBgFillMode(e.target.value)}>
+                  <option value="blur">Blurred image</option>
+                  <option value="black">Black</option>
+                </select>
+              </span>
+            </label>
+          </div>
+          {bgFillMode === "blur" && (
+            <>
+              <div className="ctrl-row">
+                <label className="ctrl ctrl--wide">
+                  <span className="ctrl__label">Blur <span className="trdur__val">{bgBlur}px</span></span>
+                  <input type="range" min={0} max={80} step={1} value={bgBlur}
+                    onChange={(e) => setBgBlur && setBgBlur(+e.target.value)} />
+                </label>
+              </div>
+              <div className="ctrl-row">
+                <label className="ctrl ctrl--wide">
+                  <span className="ctrl__label">Background opacity <span className="trdur__val">{Math.round(bgOpacity * 100)}%</span></span>
+                  <input type="range" min={0} max={1} step={0.05} value={bgOpacity}
+                    onChange={(e) => setBgOpacity && setBgOpacity(+e.target.value)} />
+                </label>
+              </div>
+            </>
+          )}
             <label className="ctrl">
               <span className="ctrl__label">Quality</span>
               <span className="selectwrap">
