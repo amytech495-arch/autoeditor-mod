@@ -200,6 +200,7 @@ export default function Editor({
   const logoImgRef = useRef(null);     // corner-logo image element for preview
   const logoInputRef = useRef(null);
   const [logoEditOpen, setLogoEditOpen] = useState(false);
+  const [cropOpen, setCropOpen] = useState(false);
   const rafRef = useRef(0);
   const fileInputRef = useRef(null);
   const capInputRef = useRef(null);
@@ -2267,6 +2268,20 @@ export default function Editor({
             onApply={(blob) => { setLogoEditOpen(false); onLogoEdit && onLogoEdit(blob); }}
           />
         )}
+      {cropOpen && inspect && imageEls[inspect] && imageEls[inspect].url && (
+          <LogoEditor
+            src={imageEls[inspect].url}
+            title="Crop image"
+            onClose={() => setCropOpen(false)}
+            onApply={(blob) => {
+              setCropOpen(false);
+              if (replaceImage && blob) {
+                const file = new File([blob], imageEls[inspect].fileName || "cropped.png", { type: "image/png" });
+                replaceImage(inspect, file);
+              }
+            }}
+          />
+        )}
         {/* --- Text overlays --- */}
         <div className="panel video-overlay">
           <h2 className="panel__h">Text overlays</h2>
@@ -2544,6 +2559,11 @@ export default function Editor({
                   <button className="mbtn mbtn--primary" onClick={() => replaceInputRef.current && replaceInputRef.current.click()}>
                     Replace {isVid ? "video" : "image"}
                   </button>
+                  {!isVid && curUrl && (
+                    <button className="mbtn" onClick={() => setCropOpen(true)}>
+                      ✂ Crop
+                    </button>
+                  )}
                   <button
                     className="mbtn"
                     onClick={() => { if (duplicateImage) { duplicateImage(inspect); closeInspect(); } }}
