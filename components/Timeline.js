@@ -66,7 +66,30 @@ export default function Timeline({
   sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
   voiceoverClip = null, voiceLevel = 1, setVoiceLevel,
 }) {
+  const [bgLaneH, setBgLaneH] = useState(40);
+  const [voLaneH, setVoLaneH] = useState(40);
   const trackRef = useRef(null);
+  const laneDragRef = useRef(null);
+  const onLaneResizeDown = useCallback((e, setH) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = laneDragRef.current;
+    // Get current height from the lane element
+    const lane = e.target.closest('.tl__lane');
+    const h0 = lane ? lane.offsetHeight : 40;
+    laneDragRef.current = h0;
+    const move = (ev) => {
+      const dh = ev.clientY - startY;
+      setH(Math.max(24, Math.min(160, h0 + dh)));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, []);
   const imgInputRef = useRef(null);
   const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
   const [hover, setHover] = useState(null); // time under the mouse, for the hover indicator
@@ -467,8 +490,14 @@ export default function Timeline({
           {voiceoverClip && (
             <div
               className="tl__lane tl__lane--voiceover"
+              style={{ height: voLaneH }}
               title="Voiceover — click for volume (locked: defines the timeline length)"
             >
+              <span
+                className="tl__lane-resize"
+                title="Drag to resize track height"
+                onPointerDown={(e) => onLaneResizeDown(e, setVoLaneH)}
+              />
               <span className="tl__lane-tag">🎙 Voiceover</span>
               <div
                 key={voiceoverClip.id}
@@ -488,9 +517,15 @@ export default function Timeline({
 
           <div
             className="tl__lane tl__lane--bg"
+            style={{ height: bgLaneH }}
             onPointerDown={onBgLaneDown}
             title="Add an audio layer, then click here to place it · drag a clip to move · click a clip to set volume"
           >
+            <span
+              className="tl__lane-resize"
+              title="Drag to resize track height"
+              onPointerDown={(e) => onLaneResizeDown(e, setBgLaneH)}
+            />
             {bgClips.map((c) => (
               <div
                 key={c.id}
