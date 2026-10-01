@@ -1458,8 +1458,10 @@ export default function Home() {
           <p className="onboard__p">
             Name each image or video clip with the second it appears — <code>0-03.png</code> or
             <code>0-03.mp4</code> cuts in at 0:03 — then import them with your voiceover. Video clips
-            can be trimmed, zoomed, and their sound mixed under the narration. Review everything below,
-            then build the timeline. Everything runs on your device. Nothing is uploaded.
+            can be trimmed, zoomed, and their sound mixed under the narration. Drop a numbered series of
+            audio files (<code>1.mp3</code>, <code>2.mp3</code>, <code>3.mp3</code>…) and they'll be
+            merged, in order, into one narration. Review everything below, then build the timeline.
+            Everything runs on your device. Nothing is uploaded.
           </p>
 
           <div className="onboard__zones">
