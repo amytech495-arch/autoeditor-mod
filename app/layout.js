@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "AutoEditor Mod v1.7",
+  title: "AutoEditor Mod v1.7.1",
   description: "Sync timestamp-named images and video clips to a voiceover and export an MP4, on your device.",
   icons: { icon: "/logo.svg" },
 };

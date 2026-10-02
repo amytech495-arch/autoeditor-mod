@@ -1,3 +1,13 @@
+Version 1.7.1
+===========
+FIXED — The Voice meter fills its rail
+  Removing the master meter left the rail about half empty, because the bar was
+  a fixed height. The Voice meter now grows to the full height of the rail, so
+  the level column, the dB scale and the volume slider reach all the way down
+  to the timeline instead of stopping short. On phone-width layouts, where the
+  rail sits under the timeline, the bar stays compact as before.
+
+
 Version 1.7
 =========
 NEW — Drag-resizable tool panel
