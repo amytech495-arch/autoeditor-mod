@@ -406,6 +406,8 @@ body.is-sashing { cursor: col-resize; user-select: none; }
    a peak-hold line. Bars are painted by direct DOM writes from the rAF loop. */
 .meter {
   flex: none;
+  /* A column flex box so .meter__inner can stretch to the rail's height. */
+  display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   padding: 8px 10px 6px;
 }
@@ -418,13 +420,20 @@ body.is-sashing { cursor: col-resize; user-select: none; }
 
 /* Docked beside the timeline the strips stack downward and scroll when a project
    has more tracks than fit. */
-.meter__inner { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; }
-.meter__strip { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
-.meter__cols { display: flex; align-items: flex-end; gap: 3px; }
+.meter__inner {
+  display: flex; flex-direction: column; gap: 10px;
+  /* Fill the rail: with the master meter gone there is a single strip, so it
+     grows to the timeline's height instead of leaving the rail half empty. */
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+}
+.meter__strip { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1 1 auto; min-height: 0; }
+/* stretch, not flex-end: the fill, the dB scale and the bar all grow to the
+   strip's height so the level column reaches the top of the rail. */
+.meter__cols { display: flex; align-items: stretch; gap: 3px; flex: 1 1 auto; min-height: 0; }
 
 /* Volume slider — fills from the bottom, dragged or arrow-keyed. */
 .meter__fill {
-  position: relative; width: 10px; height: 84px; flex: none;
+  position: relative; width: 10px; height: auto; min-height: 62px; flex: none;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px;
   cursor: pointer; touch-action: none; overflow: hidden;
 }
@@ -432,7 +441,7 @@ body.is-sashing { cursor: col-resize; user-select: none; }
 .meter__fill:hover { border-color: var(--accent); }
 .meter__fill-level { position: absolute; left: 0; right: 0; bottom: 0; background: #6ea8ff; }
 
-.meter__scale { position: relative; width: 20px; height: 84px; flex: none; }
+.meter__scale { position: relative; width: 20px; height: auto; min-height: 62px; flex: none; }
 .meter__scale span {
   position: absolute; right: 0; transform: translateY(50%);
   font: 500 8px/1 var(--font-mono); color: var(--faint);
@@ -440,7 +449,7 @@ body.is-sashing { cursor: col-resize; user-select: none; }
 
 /* Meter bars: zones are always drawn, the mask hides the unlit part. */
 .meter__cell {
-  position: relative; width: 12px; height: 84px; flex: none;
+  position: relative; width: 12px; height: auto; min-height: 62px; flex: none;
   background: #0c0c0e; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
 }
 .meter__zones { position: absolute; inset: 0; display: flex; flex-direction: column; }
@@ -476,9 +485,6 @@ body.is-sashing { cursor: col-resize; user-select: none; }
   .tlrow > .meter { max-height: none; }
   .meter__inner { flex-direction: row; gap: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
 }
-/* Short windows: keep the meters but shorten the bars rather than dropping them. */
-@media (max-height: 700px) { .meter__cell, .meter__fill, .meter__scale { height: 62px; } }
-@media (max-width: 640px) { .meter__cell, .meter__fill, .meter__scale { height: 62px; } }
 .nowclip__k { color: var(--faint); text-transform: uppercase; letter-spacing: 1px; margin-right: 5px; }
 
 .ratios { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
