@@ -10,6 +10,10 @@ Turn timestamp-named images plus a voiceover into an MP4 — entirely on your ow
 
 <img src="screenshots/3.png" width="720" alt="AutoEditor Mod — editor" />
 
+<img src="screenshots/4.png" width="720" alt="AutoEditor Mod — editor" />
+
+<img src="screenshots/5.png" width="720" alt="AutoEditor Mod — editor" />
+
 ## Features
 
 - **Image Effects** — apply one of 12 effects per clip (B&W, Sepia, Warm, Cool, Film Grain, Noise, Heavy Noise, Vignette, VHS, Grunge, Dust) with an intensity slider.
