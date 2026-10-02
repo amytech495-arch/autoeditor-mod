@@ -1,3 +1,31 @@
+Version 1.7
+=========
+NEW — Drag-resizable tool panel
+  The divider between the preview and the right-hand panel is now a real
+  splitter: drag it left or right to give the panel more or less room, and it
+  remembers that width for next time. Click the divider and use ←/→ (hold Shift
+  for bigger steps) if you'd rather not drag, or Home/End to snap it wide or
+  narrow. The panel never takes more than half the window, so a width you set
+  on a big screen can't squeeze the preview on a smaller one. On phone-width
+  layouts the panel stacks under the preview as before.
+
+NEW — Live Voice meter
+  A mixer rail now sits right beside the timeline, always on, showing the
+  narration: one draggable volume slider, a dB scale, and a green / amber / red
+  bar with a peak-hold line that reacts as the audio plays. The meter reads the
+  real preview signal, so what you see is what you're about to export; the
+  voice-over effect is applied before the meter taps, exactly as you hear it.
+  On narrow screens the rail slides back under the timeline.
+
+FIXED — Transport bar centering
+  The time display in the middle of the transport bar now sits exactly in the
+  centre. The bar used to be a flex row, so whichever side was wider took the
+  slack and pushed the clock off to one side; it's laid out on two equal
+  gutters now. Below ~1500px the volume and beat controls move onto their own
+  full-width row instead of being squeezed, and on a phone they stack in three
+  centred rows.
+
+
 Version 1.6
 =========
 NEW — Voice Over Effect
@@ -86,7 +114,6 @@ NEW — Frame ratio in one click
 NEW — Numbered voiceover series
   Drop several narration files — 1.mp3, 2.mp3, 3.mp3… — and they're merged, in
   order, into a single voiceover track for the timeline and both exports.
-
 
 Version 1.5
 =========
