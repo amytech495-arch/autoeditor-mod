@@ -14,7 +14,20 @@ import {
 import { drawTextOverlays } from "../lib/textOverlay";
 import { SFX_LIB, previewSfx, stopSfxPreviews } from "../lib/sfx";
 import { VOICE_FX, buildVoiceFxNodes, sanitizeVoiceFx } from "../lib/voiceFx";
+import { createAudioBus } from "../lib/audioBus";
+import {
+  ampToPos, advanceMeter, newMeterState, buildMeterStrips,
+  VOICE_STRIP as VOICE_ID,
+  bgStripId as bgId, sfxStripId as sfxId,
+} from "../lib/audioMeter";
+import AudioMeter from "./AudioMeter";
 
+// Divider width limits for the stage/panel splitter. SIDE_W_MAX is the widest the
+// panel may ever get; the effective ceiling is also capped at half the editor
+// (see clampSideW and the .editor grid in globals.css).
+const SIDE_W_KEY = "ae-side-w";
+const SIDE_W_MIN = 240;
+const SIDE_W_MAX = 720;
 
 function tc(t) {
   if (!isFinite(t) || t < 0) t = 0;
@@ -182,12 +195,19 @@ export default function Editor({
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
   const audioRef = useRef(null);
-  // Voice-over effect live preview: the narration <audio> element is routed through
-  // an AudioContext chain once the user applies an effect. vfxElSrc is created once
-  // per element; the node chain after it is rebuilt on every change.
-  const vfxCtxRef = useRef(null);       // AudioContext (lazily created on Apply)
-  const vfxElSrcRef = useRef(null);     // MediaElementAudioSourceNode
-  const vfxChainRef = useRef(null);     // live node chain of the current effect
+  // All preview audio (narration, background clips, sound effects) is routed
+  // through one shared AudioContext bus so each strip can be metered live. The
+  // narration element additionally passes through the applied voice-over effect
+  // chain, which is rebuilt whenever the effect changes.
+  const busRef = useRef(null);          // the audio bus (created on first playback)
+  const getBus = useCallback(() => {
+    if (!busRef.current) busRef.current = createAudioBus();
+    return busRef.current;
+  }, []);
+  const voiceFxNodesRef = useRef([]);   // live node chain of the current voice FX
+  const meterNodesRef = useRef(new Map()); // strip id -> { fill, bar } DOM handles
+  const meterStateRef = useRef(new Map()); // strip id -> meter ballistics state
+  const meterLastRef = useRef(0);
   const bgAudioRefs = useRef(new Map()); // bg clip id -> <audio> element (preview playback)
   const overlayVideoRef = useRef(null); // overlay video element for preview
   const watermarkImgRef = useRef(null); // watermark image element for preview
@@ -238,38 +258,48 @@ export default function Editor({
   // Sound-effect previews are one-shots — silence any still playing on unmount.
   useEffect(() => () => stopSfxPreviews(), []);
 
-  // Route the narration element through the AudioContext chain matching the applied
-  // voice-over effect. Once routed, the element's audio ONLY flows through this
-  // graph, so every rebuild ends at ctx.destination (an empty node list = passthrough).
+  // Route the narration element through the shared bus, applying the voice-over
+  // effect chain between the element source and its meter tap. The element's own
+  // .volume still scales the MediaElementAudioSourceNode, so the voice-over level
+  // control keeps working whether or not an effect is applied.
   const applyLiveVoiceFx = useCallback(async (fx) => {
     const a = audioRef.current;
-    const CtxCls = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
-    if (!a || !CtxCls) return;
-    let ctx = vfxCtxRef.current;
-    if (!ctx) { ctx = new CtxCls(); vfxCtxRef.current = ctx; }
-    if (ctx.state === "suspended") { try { await ctx.resume(); } catch (_) {} }
-    if (!vfxElSrcRef.current) {
-      try { vfxElSrcRef.current = ctx.createMediaElementSource(a); }
-      catch (_) { return; } // already routed by something else — leave the preview alone
-    }
-    // Swap the chain after the (permanent) element source.
-    if (vfxChainRef.current) { try { vfxChainRef.current.disconnect(); } catch (_) {} vfxChainRef.current = null; }
+    if (!a) return;
+    const bus = getBus();
+    // prepare() creates the context (attach() would too, but the effect nodes
+    // have to be built with it before the strip can be attached).
+    const ctx = bus.prepare();
+    if (!ctx) return;
+    bus.resume();
     const nodes = buildVoiceFxNodes(ctx, fx);
-    let prev = vfxElSrcRef.current;
-    for (const n of nodes) { prev.connect(n); prev = n; }
-    prev.connect(ctx.destination);
-    vfxChainRef.current = { disconnect: () => { for (const n of nodes) { try { n.disconnect(); } catch (_) {} } } };
-  }, []);
+    voiceFxNodesRef.current = nodes;
+    if (bus.has(VOICE_ID)) bus.refx(VOICE_ID, nodes);
+    else bus.attach(VOICE_ID, a, nodes);
+  }, [getBus]);
 
-  // Re-sync the live preview whenever the applied effect or the voiceover changes.
+  // Re-sync the live voice-over chain when the effect or the audio changes. The
+  // context is only ever created here if it already exists — otherwise it waits
+  // for ensureVoiceAttached() on the play gesture. An AudioContext built outside
+  // a user gesture starts suspended, and a suspended graph playing into a
+  // MediaElementAudioSourceNode freezes the narration.
   useEffect(() => {
-    if (!audioUrl) return;
-    if (vfxCtxRef.current || voiceFx) applyLiveVoiceFx(voiceFx).catch(() => {});
+    const bus = busRef.current;
+    if (!audioUrl || !bus || !bus.has(VOICE_ID)) return;
+    applyLiveVoiceFx(voiceFx).catch(() => {});
   }, [voiceFx, audioUrl, applyLiveVoiceFx]);
 
-  // Voice-over master volume: scale the preview element directly. When the audio
-  // is routed through the AudioContext (an effect is applied) the element's own
-  // .volume still affects the MediaElementAudioSourceNode, so this works either way.
+  // Route the narration through the bus on the first play. Called from the play
+  // handler so the AudioContext is created inside a user gesture and starts
+  // running — otherwise the routed narration would be silent until a resume.
+  const ensureVoiceAttached = useCallback(() => {
+    const bus = getBus();
+    bus.resume();
+    applyLiveVoiceFx(voiceFx).catch(() => {});
+  }, [getBus, applyLiveVoiceFx, voiceFx]);
+
+  // Voice-over master volume: scale the preview element directly. The element is
+  // always routed through the AudioContext bus, and .volume still affects the
+  // MediaElementAudioSourceNode, so this applies either way.
   useEffect(() => {
     const a = audioRef.current;
     if (a) a.volume = Math.max(0, Math.min(1, voiceLevel));
@@ -277,9 +307,8 @@ export default function Editor({
 
   // Tear down the preview graph on unmount.
   useEffect(() => () => {
-    if (vfxChainRef.current) { try { vfxChainRef.current.disconnect(); } catch (_) {} vfxChainRef.current = null; }
-    if (vfxCtxRef.current) { try { vfxCtxRef.current.close(); } catch (_) {} vfxCtxRef.current = null; }
-    vfxElSrcRef.current = null;
+    if (busRef.current) { busRef.current.close(); busRef.current = null; }
+    voiceFxNodesRef.current = [];
   }, []);
 
   // Voice Over Effect panel draft (effect + strength) — mirror of the applied value.
@@ -292,6 +321,76 @@ export default function Editor({
   // fades + overlays + text), persisted in localStorage.
   const sideRef = useRef(null); // the scrolling <aside> — target of "↑ Back to top"
   const [sideTab, setSideTab] = useState("export");
+
+  // Resizable stage/panel divider (like HyperFrames' split view). The width is a
+  // CSS var on .editor so the CSS grid picks it up without re-rendering layout
+  // work in React; dragging only mutates the element, and the value is committed
+  // to state + localStorage once on release.
+  const [sideW, setSideW] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(SIDE_W_KEY) || "", 10);
+      if (v >= SIDE_W_MIN && v <= SIDE_W_MAX) return v;
+    } catch { /* storage blocked */ }
+    return 320;
+  });
+  const editorRef = useRef(null);
+  const sashRef = useRef(null);
+  const sideWDraft = useRef(null); // live px during a drag
+  // Half the editor is the ceiling, matching the CSS cap on the panel column —
+  // so the sash stops where the panel would stop growing, instead of sliding
+  // through a range that renders identically.
+  const clampSideW = useCallback((px) => {
+    const el = editorRef.current;
+    const max = el ? Math.min(SIDE_W_MAX, Math.round(el.clientWidth / 2)) : SIDE_W_MAX;
+    return Math.max(Math.min(SIDE_W_MIN, max), Math.min(max, Math.round(px)));
+  }, []);
+  const commitSideW = useCallback((px) => {
+    const w = clampSideW(px);
+    setSideW(w);
+    try { localStorage.setItem(SIDE_W_KEY, String(w)); } catch { /* storage blocked */ }
+  }, [clampSideW]);
+  const onSashDown = useCallback((e) => {
+    const el = editorRef.current;
+    if (!el || e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    const side = el.querySelector(".side");
+    const startX = e.clientX;
+    const startW = side ? side.getBoundingClientRect().width : sideW;
+    sideWDraft.current = startW;
+    let last = startW;
+    el.style.setProperty("--side-w", `${startW}px`);
+    if (sashRef.current) {
+      sashRef.current.classList.add("is-dragging");
+      sashRef.current.focus();
+    }
+    document.body.classList.add("is-sashing");
+    const onMove = (ev) => {
+      // Dragging left widens the panel, so the delta is inverted.
+      last = clampSideW(startW - (ev.clientX - startX));
+      el.style.setProperty("--side-w", `${last}px`);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.body.classList.remove("is-sashing");
+      if (sashRef.current) sashRef.current.classList.remove("is-dragging");
+      sideWDraft.current = null;
+      commitSideW(last);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, [sideW, commitSideW]);
+  // Keyboard resizing: the divider is a real button so it is reachable by tab.
+  const onSashKey = useCallback((e) => {
+    const step = e.shiftKey ? 48 : 16;
+    if (e.key === "ArrowLeft") { e.preventDefault(); commitSideW((sideWDraft.current ?? sideW) + step); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); commitSideW((sideWDraft.current ?? sideW) - step); }
+    else if (e.key === "Home") { e.preventDefault(); commitSideW(SIDE_W_MAX); }
+    else if (e.key === "End") { e.preventDefault(); commitSideW(SIDE_W_MIN); }
+  }, [sideW, commitSideW]);
+
   const presetMsgTimer = useRef(null);
   const [presets, setPresets] = useState(loadPresets);
   const [presetName, setPresetName] = useState("");
@@ -486,6 +585,20 @@ export default function Editor({
     }
   }, [sfxResolved, sfxMaster]);
 
+  // Tap each sound-effect element through the shared bus so its strip can be
+  // metered. Re-attaching is cheap and the bus dedupes per element.
+  useEffect(() => {
+    const bus = getBus();
+    const want = new Set(sfxResolved.filter((s) => s.url).map((s) => sfxId(s.id)));
+    for (const id of bus.ids()) {
+      if (id.startsWith("sfx:") && !want.has(id)) bus.detach(id);
+    }
+    for (const s of sfxResolved) {
+      const el = sfxAudioRefs.current.get(s.id);
+      if (el && s.url) bus.attach(sfxId(s.id), el);
+    }
+  }, [sfxResolved, getBus]);
+
   // One <audio> element per BG clip, reused across frames; created lazily and
   // volume-scaled per clip, removed when the clip disappears.
   useEffect(() => {
@@ -509,6 +622,19 @@ export default function Editor({
       if (el) el.volume = Math.max(0, Math.min(1, c.volume == null ? 0.8 : c.volume));
     }
   }, [bgClips]);
+
+  // Tap each background-clip element through the shared bus for live metering.
+  useEffect(() => {
+    const bus = getBus();
+    const want = new Set(bgClips.filter((c) => c.url).map((c) => bgId(c.id)));
+    for (const id of bus.ids()) {
+      if (id.startsWith("bg:") && !want.has(id)) bus.detach(id);
+    }
+    for (const c of bgClips) {
+      const el = bgAudioRefs.current.get(c.id);
+      if (el && c.url) bus.attach(bgId(c.id), el);
+    }
+  }, [bgClips, getBus]);
 
   const [inspect, setInspect] = useState(null);   // slot name open in the inspector
   const [dismissedWarn, setDismissedWarn] = useState(() => new Set()); // hidden warning texts
@@ -823,6 +949,58 @@ export default function Editor({
     return () => clearInterval(id);
   }, [busy, wcBusy]);
 
+  // Paint the live meters straight onto the DOM nodes the <AudioMeter> strips
+  // registered — going through React state here would re-render the editor on
+  // every audio frame. Ballistics (fast attack, slow release, peak hold) live in
+  // meterStateRef so a strip's bar settles instead of flickering.
+  const paintMeters = useCallback(() => {
+    const bus = busRef.current;
+    const nodes = meterNodesRef.current;
+    if (!bus || !nodes.size) return;
+    const now = performance.now();
+    const dt = meterLastRef.current ? now - meterLastRef.current : 16;
+    meterLastRef.current = now;
+    const states = meterStateRef.current;
+    const paint = (id, amp) => {
+      const h = nodes.get(id);
+      if (!h || !h.bar || !h.bar.mask || !h.bar.peak) return;
+      let st = states.get(id);
+      if (!st) { st = newMeterState(now); states.set(id, st); }
+      st.now = now;
+      advanceMeter(st, ampToPos(amp), dt);
+      h.bar.mask.style.height = `${(1 - st.level) * 100}%`;
+      h.bar.peak.style.bottom = `${st.peak * 100}%`;
+      h.bar.peak.style.opacity = st.peak > 0.01 ? "0.85" : "0";
+    };
+    for (const id of bus.ids()) paint(id, bus.read(id));
+  }, []);
+
+  // Idle decay so the bars fall back to zero when playback stops.
+  useEffect(() => {
+    if (playing) return;
+    const id = setInterval(() => paintMeters(), 60);
+    return () => clearInterval(id);
+  }, [playing, paintMeters]);
+
+  // ----- Live meters -------------------------------------------------------
+  // The rail is a permanent part of the timeline row and shows the narration
+  // only, so there is no on/off state and nothing to derive from other tracks.
+  const meterStrips = useMemo(
+    () => buildMeterStrips({ voiceLevel, setVoiceLevel }),
+    [voiceLevel, setVoiceLevel],
+  );
+
+  // Meter volume sliders reuse the existing per-track volume setters.
+  const onMeterVolume = useCallback((id, v) => {
+    const strip = meterStrips.find((s) => s.id === id);
+    if (strip && strip.setVolume) strip.setVolume(v);
+  }, [meterStrips]);
+
+  const registerMeter = useCallback((id, nodes) => {
+    if (nodes) meterNodesRef.current.set(id, nodes);
+    else meterNodesRef.current.delete(id);
+  }, []);
+
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -873,14 +1051,13 @@ export default function Editor({
         }
         if (ov.paused) ov.play().catch(() => {});
       }
+      paintMeters();
       rafRef.current = requestAnimationFrame(loop);
     };
     const onPlay = () => {
       setPlaying(true);
-      // Keep the voice-over effect preview graph audible (resume on the play gesture).
-      if (vfxCtxRef.current && vfxCtxRef.current.state === "suspended") {
-        try { vfxCtxRef.current.resume(); } catch (_) {}
-      }
+      // Keep the preview graph audible (resume on the play gesture).
+      ensureVoiceAttached();
       // Start crossing detection from the current position (never retro-fire markers).
       sfxPrevRef.current = a.currentTime;
       cancelAnimationFrame(rafRef.current);
@@ -902,20 +1079,18 @@ export default function Editor({
       a.removeEventListener("ended", onStop);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [audioUrl, overlayEnabled, overlayUrl, overlayDuration, overlayLoop]);
+  }, [audioUrl, overlayEnabled, overlayUrl, overlayDuration, overlayLoop, ensureVoiceAttached]);
 
   const toggle = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
-    if (a.paused) {
-      // The narration element is routed through the AudioContext once an effect has
-      // been applied, so make sure that context is audible when playback starts.
-      if (vfxCtxRef.current && vfxCtxRef.current.state === "suspended") {
-        try { vfxCtxRef.current.resume(); } catch (_) {}
-      }
+if (a.paused) {
+      // The narration is routed through the AudioContext bus, so make sure that
+      // graph exists and is running before playback starts.
+      ensureVoiceAttached();
       a.play();
     } else a.pause();
-  }, []);
+  }, [ensureVoiceAttached]);
 
   // Coalesce rapid scrub seeks: while a seek is still settling (slow for WAV),
   // remember the latest target and apply it on 'seeked', so the drag's release
@@ -1008,7 +1183,12 @@ export default function Editor({
     if (a) sfxPrevRef.current = a.currentTime;
     const wasPlaying = scrubResumeRef.current;
     scrubResumeRef.current = false;
-    if (a && wasPlaying) a.play().catch(() => {});
+    if (a && wasPlaying) {
+      // The narration is routed through the AudioContext bus — make sure it is
+      // running again before resuming from the scrub.
+      if (busRef.current) busRef.current.resume();
+      a.play().catch(() => {});
+    }
     // Resume BG clips only when playback is actually resuming — a plain click on
     // the scrub strip repositions the playhead and must stay silent.
     if (a && wasPlaying) {
@@ -1080,7 +1260,7 @@ export default function Editor({
   const selectedImageNum = selectedClip && !selectedClip.gap ? imageClips.indexOf(selectedClip) + 1 : 0;
 
   return (
-    <section className="editor">
+    <section className="editor" ref={editorRef} style={{ "--side-w": `${sideW}px` }}>
       <div className="main">
         <div className="viewer" ref={viewerRef}>
           <div className="viewer__frame">
@@ -1226,6 +1406,7 @@ export default function Editor({
           );
         })()}
 
+        <div className="tlrow">
         <Timeline
           clips={clips}
           imageEls={imageEls}
@@ -1233,6 +1414,7 @@ export default function Editor({
           time={time}
           peaks={peaks}
           activeName={active && active.name}
+          playing={playing}
           badClips={badClips}
           transitionsByName={transitionsByName}
           motionByName={motionByName}
@@ -1259,8 +1441,29 @@ export default function Editor({
           onSfxMove={moveSfx}
           onSfxOpen={setSfxOpen}
         />
+
+          <AudioMeter
+            strips={meterStrips}
+            onVolume={onMeterVolume}
+            register={registerMeter}
+          />
+        </div>
       </div>
 
+      <button
+          type="button"
+          className="sash"
+          ref={sashRef}
+          onPointerDown={onSashDown}
+          onKeyDown={onSashKey}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize tool panel"
+          aria-valuenow={sideW}
+          aria-valuemin={SIDE_W_MIN}
+          aria-valuemax={SIDE_W_MAX}
+          data-tip="Drag to resize the panel — or use ←/→"
+        />
       <aside className="side" ref={sideRef}>
         <div
           className="side__tabs"

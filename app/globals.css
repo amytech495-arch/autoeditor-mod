@@ -270,12 +270,48 @@ body {
 .build-hint { font-size: 12.5px; color: var(--muted); }
 
 /* ---------- Editor: fills the viewport, no window scroll ---------- */
+/* The panel column is capped at half the editor: a width saved on a wide monitor
+   (say 700px) must not squeeze the stage down to a sliver in a narrow window.
+   Percentages resolve against the grid box, so this needs no width math. */
 .editor {
   flex: 1; min-height: 0; width: 100%;
-  display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 12px;
+  display: grid; grid-template-columns: minmax(0,1fr) 5px min(var(--side-w, 320px), 50%); gap: 0 9px;
 }
 .main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
+.side {
+  min-height: 0; min-width: 0; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 12px; padding-right: 2px;
+}
+
+/* Draggable divider between the stage and the tool panel. */
+.sash {
+  position: relative; width: 5px; min-height: 0;
+  cursor: col-resize; touch-action: none; border-radius: 3px;
+  background: transparent; border: none; padding: 0;
+}
+/* A scrollbar-thin rule centred inside the button. The 5px button is the grab
+   target, but only a 3px line is painted until you hover or drag — the old
+   inset bled 4px past each side, so the divider read as a 14px slab. */
+.sash::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 3px; margin-left: -1.5px;
+  background: var(--line); border-radius: 3px;
+  transition: background .12s, box-shadow .12s, width .12s, margin-left .12s;
+}
+.sash:hover::before, .sash:focus-visible::before { width: 5px; margin-left: -2.5px; background: var(--accent); }
+.sash:focus-visible { outline: none; }
+.sash:focus-visible::before { box-shadow: 0 0 0 1px var(--accent), 0 0 6px #4da3ff66; }
+.sash.is-dragging::before { width: 5px; margin-left: -2.5px; background: var(--accent); box-shadow: 0 0 8px #4da3ff66; }
+/* The mid-dot grip, like a desktop splitter. */
+.sash::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 2px; height: 22px; margin: -11px 0 0 -1px;
+  border-radius: 2px; background: var(--faint); opacity: 0;
+  transition: opacity .12s;
+}
+.sash:hover::after, .sash:focus-visible::after, .sash.is-dragging::after { opacity: 1; }
+/* While dragging, stop the playhead/canvas from selecting the divider text. */
+body.is-sashing { cursor: col-resize; user-select: none; }
 
 .viewer {
   flex: 1; min-height: 0;
@@ -297,7 +333,17 @@ body {
 }
 
 /* Transport bar */
-.transport { flex: none; display: flex; align-items: center; gap: 14px; padding: 10px 4px 2px; }
+/* Three columns so the time display sits exactly in the middle: two equal 1fr
+   gutters with the transport controls sized to their content between them.
+   Flexbox cannot do this — the side groups have different natural widths, so
+   whichever one grows absorbs the slack and pushes the centre off-axis. Below
+   ~1500px the right column is narrower than its controls, and they wrap onto a
+   second row there rather than being squeezed. */
+.transport {
+  flex: none; display: grid; align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 14px; row-gap: 8px; padding: 10px 4px 2px;
+}
 .play {
   flex: none; width: 44px; height: 44px; border-radius: 12px;
   background: var(--amber); color: #161618; border: none; cursor: pointer;
@@ -315,9 +361,20 @@ body {
 .time__now:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .time__now--edit { width: 7ch; box-sizing: border-box; background: var(--panel-2); border: 1px solid var(--line); }
 .time__total { color: var(--muted); font-variant-numeric: tabular-nums; }
-.transport__end { flex: 1; display: flex; align-items: center; gap: 14px; min-width: 0; }
-.transport__end--right { justify-content: flex-end; flex-wrap: wrap; }
-.transport__center { flex: none; display: flex; align-items: center; gap: 10px; }
+/* min-width:0 lets the left column collapse so the centre keeps its position
+   and the "now" chip truncates instead of overflowing. */
+.transport__end { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* The right group keeps its controls on one row while its column can afford it,
+   and wraps to a second row when the column is too narrow. */
+.transport__end--right { justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
+/* Once each side column would be narrower than these controls (~1500px and
+   below), give the group a full-width row of its own instead of letting it
+   stack into a tall column. The centre stays centred: the vacated third column
+   still claims its 1fr share, so the two gutters remain equal. */
+@media (max-width: 1500px) {
+  .transport__end--right { grid-column: 1 / -1; }
+}
+.transport__center { display: flex; align-items: center; gap: 10px; justify-self: center; }
 .skip {
   flex: none; width: 34px; height: 44px; border-radius: 10px;
   background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
@@ -334,6 +391,7 @@ body {
   cursor: pointer; transition: border-color .12s, color .12s, opacity .12s;
 }
 .hbtn:hover:not(:disabled) { border-color: var(--accent); color: #dfe6ff; }
+.hbtn.is-on { border-color: var(--accent); background: rgba(231,232,236,.14); color: #dfe6ff; }
 .hbtn:active:not(:disabled) { transform: translateY(1px); }
 .hbtn:disabled { opacity: .4; cursor: default; }
 .nowclip {
@@ -341,6 +399,86 @@ body {
   border: 1px solid var(--line); border-radius: 7px; padding: 4px 9px;
   max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ---------- Live audio meters ---------- */
+/* A horizontal rail of per-track strips, modelled on the HyperFrames Studio
+   meter: volume slider, dB scale, and an L/R pair of green/amber/red bars with
+   a peak-hold line. Bars are painted by direct DOM writes from the rAF loop. */
+.meter {
+  flex: none;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 8px 10px 6px;
+}
+/* The timeline and the meter rail share a row: the timeline takes the room it
+   needs and the mixer docks to its right edge, so the meters sit alongside the
+   clips instead of stealing a row of their own above the timeline. */
+.tlrow { display: flex; gap: 9px; align-items: stretch; min-height: 0; }
+.tlrow > .tl { flex: 1 1 auto; min-width: 0; }
+.tlrow > .meter { flex: none; max-height: 320px; }
+
+/* Docked beside the timeline the strips stack downward and scroll when a project
+   has more tracks than fit. */
+.meter__inner { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; }
+.meter__strip { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
+.meter__cols { display: flex; align-items: flex-end; gap: 3px; }
+
+/* Volume slider — fills from the bottom, dragged or arrow-keyed. */
+.meter__fill {
+  position: relative; width: 10px; height: 84px; flex: none;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px;
+  cursor: pointer; touch-action: none; overflow: hidden;
+}
+.meter__fill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.meter__fill:hover { border-color: var(--accent); }
+.meter__fill-level { position: absolute; left: 0; right: 0; bottom: 0; background: #6ea8ff; }
+
+.meter__scale { position: relative; width: 20px; height: 84px; flex: none; }
+.meter__scale span {
+  position: absolute; right: 0; transform: translateY(50%);
+  font: 500 8px/1 var(--font-mono); color: var(--faint);
+}
+
+/* Meter bars: zones are always drawn, the mask hides the unlit part. */
+.meter__cell {
+  position: relative; width: 12px; height: 84px; flex: none;
+  background: #0c0c0e; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+}
+.meter__zones { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.meter__zone--red { background: #d94f4f; }
+.meter__zone--amber { background: #d9a441; }
+.meter__zone--green { background: #4fbf7f; }
+.meter__mask {
+  position: absolute; left: 0; right: 0; top: 0; height: 100%;
+  background: #0c0c0e; will-change: height;
+}
+.meter__peak {
+  position: absolute; left: 0; right: 0; height: 1px; bottom: 0;
+  background: #fff; opacity: .85; will-change: bottom;
+}
+
+.meter__label { display: flex; align-items: center; gap: 4px; max-width: 92px; }
+.meter__name {
+  font: 500 10px/1.3 var(--font-ui); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.meter__mute {
+  flex: none; width: 14px; height: 14px; padding: 0; border-radius: 4px;
+  font: 700 9px/1 var(--font-ui); color: var(--faint);
+  background: transparent; border: 1px solid var(--line); cursor: pointer;
+}
+.meter__mute:hover { color: var(--text); border-color: var(--accent); }
+.meter__mute.is-on { background: var(--bad); border-color: var(--bad); color: #1a1010; }
+
+/* Narrow layouts stack the rail back under the timeline, where it reads as a
+   horizontal strip row instead of a tall column squeezing the timeline. */
+@media (max-width: 860px) {
+  .tlrow { flex-direction: column; }
+  .tlrow > .meter { max-height: none; }
+  .meter__inner { flex-direction: row; gap: 12px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+}
+/* Short windows: keep the meters but shorten the bars rather than dropping them. */
+@media (max-height: 700px) { .meter__cell, .meter__fill, .meter__scale { height: 62px; } }
+@media (max-width: 640px) { .meter__cell, .meter__fill, .meter__scale { height: 62px; } }
 .nowclip__k { color: var(--faint); text-transform: uppercase; letter-spacing: 1px; margin-right: 5px; }
 
 .ratios { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
@@ -675,12 +813,37 @@ body {
 .wave--empty { position: absolute; inset: 0; background: rgba(231,232,236,.06); }
 
 .tl__playhead {
-  position: absolute; top: -2px; bottom: 0; width: 2px;
-  background: var(--amber); z-index: 5; pointer-events: none;
+  position: absolute; top: -2px; bottom: 0; width: 2px; z-index: 5; pointer-events: none;
+}
+.tl__playhead-line {
+  position: absolute; inset: 0;
+  background: #1976D2;
+  box-shadow: 0 0 6px rgba(25, 118, 210, .45);
+  transition: box-shadow .18s;
+}
+.tl__playhead-glow {
+  position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 16px; margin-left: -1px; transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(25, 118, 210, .18), transparent);
+  opacity: 0; transition: opacity .18s;
+}
+.tl__playhead.is-play .tl__playhead-line {
+  box-shadow: 0 0 6px rgba(25, 118, 210, .6), 0 0 16px rgba(25, 118, 210, .35);
+}
+.tl__playhead.is-play .tl__playhead-glow,
+.tl__playhead.is-scrub .tl__playhead-glow {
+  opacity: 1;
 }
 .tl__playhead-grip {
-  position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
-  width: 11px; height: 11px; border-radius: 50%; background: var(--amber);
+  position: absolute; top: -8px; left: 50%; transform: translateX(-50%) rotate(45deg);
+  width: 11px; height: 11px; border-radius: 2px;
+  background: transparent; border: 1.5px solid #1976D2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 0 5px rgba(25, 118, 210, .4);
+  transition: background .1s, box-shadow .1s;
+}
+.tl__playhead.is-scrub .tl__playhead-grip {
+  background: #1976D2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 0 5px rgba(25, 118, 210, .4), 0 0 12px rgba(25, 118, 210, .55);
 }
 
 /* Trim: shade marks the untrimmed tail (won't export); handle sets the trim point. */
@@ -944,6 +1107,7 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
   .app { height: auto; min-height: 100dvh; }
   .content { display: block; }
   .editor { display: flex; flex-direction: column; }
+  .sash { display: none; }
   .side { overflow: visible; }
   .viewer { flex: none; }
   .viewer__frame { flex: none; aspect-ratio: 16 / 9; }
@@ -986,12 +1150,15 @@ button:focus-visible, .dz:focus-visible, a:focus-visible {
   .bar__io > .dz { flex: 1; min-width: 0; }
   .dz--compact .dz__title { max-width: none; }
 
-  /* Transport: without the spacer the controls flow and wrap naturally, so the
-     "now image" chip drops to its own line instead of being clipped. */
-  .transport { flex-wrap: wrap; row-gap: 8px; }
-  .transport__spacer { display: none; }
+  /* Transport: drop the undo/redo group margin, and let the chip use the full
+     column so it stays readable rather than truncating on the first word. */
   .history { margin-right: 0; }
   .nowclip { max-width: none; }
+  /* Phone: the three groups become three full-width rows rather than
+     competing for gutters that are only a few pixels wide. A single centred
+     column means the centre group is still exactly centred in its row. */
+  .transport { grid-template-columns: minmax(0, 1fr); }
+  .transport__end, .transport__center { grid-column: 1 / -1; justify-self: center; justify-content: center; }
 
   /* Inspector modal: use more of the narrow screen and stack the actions into
      full-width buttons instead of cramming them side-by-side. */

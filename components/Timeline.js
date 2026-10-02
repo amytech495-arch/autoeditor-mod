@@ -55,7 +55,7 @@ function Waveform({ peaks, style }) {
 // The signature element: a scrubbable track with a fixed label gutter. Clips,
 // waveform, playhead and click-to-seek all share the track's coordinate space.
 export default function Timeline({
-  clips, imageEls, duration, time, activeName, badClips,
+  clips, imageEls, duration, time, activeName, badClips, playing,
   transitionsByName, motionByName, selectedName, onSelect,
   onSeek, onScrubStart, onScrubEnd, onOpen, onAdd, onAddFiles, onResizeBoundary,
   trimEnd, onTrimChange,
@@ -70,6 +70,7 @@ export default function Timeline({
   const [pop, setPop] = useState(null); // one-shot time-chip pop on click, { t, id }
   const popIdRef = useRef(0);
   const [over, setOver] = useState(false); // a file is being dragged over the video lane
+  const [scrubbing, setScrubbing] = useState(false); // playhead grip fills while dragging
 
   // Accept a dropped image/video (or folder) straight onto the video lane: the
   // files are re-collected exactly like the import buttons and handed to the
@@ -212,6 +213,7 @@ export default function Timeline({
   }, [duration, onSeek]);
 
   const onScrubDown = useCallback((e) => {
+    setScrubbing(true);
     if (onScrubStart) onScrubStart();
     seekAt(e.clientX);
     const move = (ev) => seekAt(ev.clientX);
@@ -219,6 +221,7 @@ export default function Timeline({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       seekAt(ev.clientX); // make sure the final release position is applied
+      setScrubbing(false);
       if (onScrubEnd) onScrubEnd();
     };
     window.addEventListener("pointermove", move);
@@ -508,7 +511,9 @@ export default function Timeline({
             ))}
           </div>
 
-          <div className="tl__playhead" style={{ left: pctZoom(time) }}>
+          <div className={`tl__playhead${playing ? " is-play" : ""}${scrubbing ? " is-scrub" : ""}`} style={{ left: pctZoom(time) }}>
+            <span className="tl__playhead-glow" aria-hidden="true" />
+            <span className="tl__playhead-line" aria-hidden="true" />
             <span className="tl__playhead-grip" />
           </div>
 
