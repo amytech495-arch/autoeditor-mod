@@ -35,6 +35,6 @@ jobs:
       - name: Upload zip
         uses: actions/upload-artifact@v4
         with:
-          name: AutoEditorModv1.7.1-macOS-${{ matrix.arch }}
-          path: dist/AutoEditorModv1.7.1-macOS-*.zip
+          name: AutoEditorModv1.8-macOS-${{ matrix.arch }}
+          path: dist/AutoEditorModv1.8-macOS-*.zip
           if-no-files-found: error

@@ -71,7 +71,7 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
         <div className="ph__bar">
           <div className="ph__brand">
             <img className="ph__logo" src="/logo.svg" alt="" width="26" height="26" />
-            <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod <span className="ph__version">v1.7.1</span></span>
+            <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod <span className="ph__version">v1.8</span></span>
           </div>
           <div className="ph__actions">
             <ThemeToggle />

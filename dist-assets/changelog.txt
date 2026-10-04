@@ -1,3 +1,27 @@
+Version 1.8
+=========
+NEW — Dark mode
+  The app now has a light and a dark theme, switched with the sun/moon
+  button in the header — on the Projects screen and in the editor both.
+  Your choice is remembered for next time, and the theme is applied
+  before the first frame paints, so it never flashes a white screen on
+  the way in. The panels, timeline, meters and overlays all follow along,
+  and text keeps a readable contrast either way. To force one theme for a
+  single visit, add ?theme=light or ?theme=dark to the address.
+
+NEW — Lower thirds
+  Overlay has a new Lower third panel, just under Image Overlay. Choose a
+  green-screen clip and it lands on the timeline in its own lane, with a
+  poster frame you can drag anywhere along the track. Add it more than
+  once and each one gets its own lane, so several lower thirds can be on
+  screen together instead of fighting for the same space. The green comes
+  out as the picture plays, and again in the export, with no re-encoding
+  and nothing to wait for: similarity, edge softness and spill controls
+  sit in the panel next to the size and the position in the frame. Both
+  clip edges trim like a background clip, and trimming the start keeps
+  the frames you cut away from coming back. Lower thirds last for the
+  session — re-add the file after reloading the page.
+
 Version 1.7.1
 ===========
 FIXED — The Voice meter fills its rail
