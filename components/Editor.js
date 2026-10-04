@@ -12,6 +12,8 @@ import {
   captionCueAt, drawCaption, captionFontPx, captionLineHeightDefault, drawWatermark, drawCornerLogo,
 } from "../lib/captions";
 import { drawTextOverlays } from "../lib/textOverlay";
+import { drawKeyedSource } from "../lib/chromaKey";
+import { lowerThirdActiveAt, lowerThirdRect } from "../lib/lowerThird";
 import { SFX_LIB, previewSfx, stopSfxPreviews } from "../lib/sfx";
 import { VOICE_FX, buildVoiceFxNodes, sanitizeVoiceFx } from "../lib/voiceFx";
 import { createAudioBus } from "../lib/audioBus";
@@ -171,6 +173,9 @@ export default function Editor({
   watermarkOpacity, setWatermarkOpacity,
   watermarkEnabled, setWatermarkEnabled,
   onWatermark,
+  lowerThirds = [], ltReadyTick = 0, selectedLtId = null, setSelectedLtId,
+  addLowerThird: onAddLowerThird, updateLowerThird: onUpdateLowerThird,
+  removeLowerThird: onRemoveLowerThird, getLtVideo,
   logoUrl,
   setLogoFile, setLogoUrl,
   logoCorner, setLogoCorner,
@@ -226,6 +231,7 @@ export default function Editor({
   const sfxResolvedRef = useRef([]);      // latest resolved markers (read by the RAF loop)
   const bgClipsRef = useRef([]);          // latest BG clips (read by the RAF loop)
   const overlayInputRef = useRef(null);
+  const lowerThirdInputRef = useRef(null);
   const pending = useRef(null); // gap-fill target name
   const trimEndRef = useRef(exportDuration);
   const vidRefs = useRef({});     // clip name -> offscreen <video> for live preview
@@ -897,6 +903,30 @@ export default function Editor({
       }
     }
 
+    // Lower thirds: a keyed clip placed over the picture, one lane per clip.
+    if (lowerThirds.length && getLtVideo) {
+      for (const lt of lowerThirds) {
+        if (!lowerThirdActiveAt(lt, t)) continue;
+        const v = getLtVideo(lt.id);
+        if (!v || v.readyState < 2 || !v.videoWidth || !v.videoHeight) continue;
+        const local = (lt.offset || 0) + t - lt.start;
+        // Seek only when the frame we're on has drifted out of the decoded one.
+        // Chasing exact frame parity here would stall the scrub; the export
+        // does the precise seek instead.
+        if (Math.abs(v.currentTime - local) > 1 / 24) {
+          try { v.currentTime = Math.min(Math.max(local, 0), v.duration || local); } catch { /* ignore */ }
+        }
+        const r = lowerThirdRect(lt, W, H, v.videoWidth / v.videoHeight);
+        drawKeyedSource(ctx, v, r.x, r.y, r.w, r.h, {
+          keyEnabled: lt.keyEnabled,
+          keyColor: lt.keyColor,
+          similarity: lt.similarity,
+          smoothness: lt.smoothness,
+          despill: lt.despill,
+        });
+      }
+    }
+
     // Captions burn in before the fades, so the fade dims them too.
     if (captionsOn && captionCues && captionCues.length) {
       const cue = captionCueAt(captionCues, t);
@@ -933,7 +963,7 @@ export default function Editor({
       overlayEnabled, overlayUrl, overlayOpacity, overlayBlendMode, overlayDuration,
       watermarkEnabled, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity,
       logoEnabled, logoUrl, logoCorner, logoSize, logoOpacity,
-      textOverlays]);
+      textOverlays, lowerThirds, ltReadyTick, getLtVideo]);
 
   useEffect(() => { drawRef.current = draw; }, [draw]);
   useEffect(() => { timeRef.current = time; }, [time]);
@@ -1440,6 +1470,18 @@ if (a.paused) {
           onSfxAdd={addSfx}
           onSfxMove={moveSfx}
           onSfxOpen={setSfxOpen}
+          lowerThirds={lowerThirds}
+          selectedLtId={selectedLtId}
+          onLtMove={(id, start) => {
+            const lt = lowerThirds.find((l) => l.id === id);
+            if (lt) onUpdateLowerThird(id, { start });
+            if (selectedLtId !== id) setSelectedLtId(id);
+          }}
+          onLtTrim={(id, patch) => {
+            onUpdateLowerThird(id, patch);
+            if (selectedLtId !== id) setSelectedLtId(id);
+          }}
+          onLtSelect={setSelectedLtId}
         />
 
           <AudioMeter
@@ -2524,6 +2566,175 @@ if (a.paused) {
         </div>
 
         <div className="panel video-overlay">
+          <h2 className="panel__h">Lower third</h2>
+          <div className="mini-h">
+            Add a clip shot against a backdrop (a green screen), remove the
+            background live, and place it over your video. Each Add click gets
+            its own timeline lane.
+          </div>
+          <input
+            type="file" accept="video/*" hidden
+            ref={lowerThirdInputRef}
+            onChange={(e) => {
+              const f = e.target.files && e.target.files[0];
+              e.target.value = ""; // let the same file be picked twice in a row
+              if (f) onAddLowerThird(f);
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="trall"
+              onClick={() => lowerThirdInputRef.current && lowerThirdInputRef.current.click()}
+            >
+              + Add Lower third
+            </button>
+            {lowerThirds.length > 0 && (
+              <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>
+                {lowerThirds.length} in project
+              </span>
+            )}
+          </div>
+
+          {lowerThirds.length === 0 ? (
+            <div className="lt-empty">
+              No lower thirds yet. Tip: shoot against an evenly lit backdrop with
+              no shadow falling on it — that keys far cleaner than any slider.
+            </div>
+          ) : (
+            <div className="lt-list">
+              {lowerThirds.map((lt) => (
+                <div
+                  key={lt.id}
+                  className={`lt-item${selectedLtId === lt.id ? " is-sel" : ""}`}
+                  onPointerDown={() => setSelectedLtId(lt.id)}
+                >
+                  <div className="lt-item__head">
+                    {lt.thumb
+                      ? <img className="lt-item__thumb" src={lt.thumb} alt="" draggable={false} />
+                      : <span className="lt-item__thumb lt-item__thumb--empty" aria-hidden="true" />}
+                    <span className="lt-item__name" title={lt.name}>{lt.name}</span>
+                    <button
+                      type="button"
+                      className="mbtn mbtn--danger lt-item__del"
+                      onClick={(e) => { e.stopPropagation(); onRemoveLowerThird(lt.id); }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <label className="lt-check">
+                    <input
+                      type="checkbox"
+                      checked={lt.enabled !== false}
+                      onChange={(e) => onUpdateLowerThird(lt.id, { enabled: e.target.checked })}
+                    />
+                    <span>Show this lower third</span>
+                  </label>
+
+                  <label className="lt-check">
+                    <input
+                      type="checkbox"
+                      checked={!!lt.keyEnabled}
+                      onChange={(e) => onUpdateLowerThird(lt.id, { keyEnabled: e.target.checked })}
+                    />
+                    <span>Remove background (chroma key)</span>
+                  </label>
+
+                  {lt.keyEnabled ? (
+                    <>
+                      <div className="lt-row">
+                        <span className="lt-row__k">Key colour</span>
+                        <input
+                          type="color"
+                          className="lt-color"
+                          value={lt.keyColor}
+                          onChange={(e) => onUpdateLowerThird(lt.id, { keyColor: e.target.value })}
+                          aria-label="Backdrop colour to remove"
+                        />
+                        <input
+                          type="text"
+                          className="lt-hex"
+                          value={lt.keyColor}
+                          onChange={(e) => onUpdateLowerThird(lt.id, { keyColor: e.target.value })}
+                          aria-label="Key colour hex"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <label className="trdur" style={{ marginBottom: 8 }}>
+                        <span style={{ fontSize: 11 }}>Tolerance</span>
+                        <input
+                          type="range" min={0.02} max={0.6} step={0.005}
+                          value={lt.similarity}
+                          onChange={(e) => onUpdateLowerThird(lt.id, { similarity: +e.target.value })}
+                        />
+                        <span className="trdur__val" style={{ fontSize: 11 }}>{lt.similarity.toFixed(3)}</span>
+                      </label>
+                      <label className="trdur" style={{ marginBottom: 8 }}>
+                        <span style={{ fontSize: 11 }}>Softness</span>
+                        <input
+                          type="range" min={0} max={0.5} step={0.005}
+                          value={lt.smoothness}
+                          onChange={(e) => onUpdateLowerThird(lt.id, { smoothness: +e.target.value })}
+                        />
+                        <span className="trdur__val" style={{ fontSize: 11 }}>{lt.smoothness.toFixed(3)}</span>
+                      </label>
+                      <label className="trdur" style={{ marginBottom: 8 }}>
+                        <span style={{ fontSize: 11 }}>Edge clean-up</span>
+                        <input
+                          type="range" min={0} max={1} step={0.02}
+                          value={lt.despill}
+                          onChange={(e) => onUpdateLowerThird(lt.id, { despill: +e.target.value })}
+                        />
+                        <span className="trdur__val" style={{ fontSize: 11 }}>{Math.round(lt.despill * 100)}%</span>
+                      </label>
+                      <div className="mini-h lt-note">
+                        Raise tolerance until the backdrop is gone, then back it off
+                        if it starts eating into the subject. Edge clean-up removes
+                        the green rim the backdrop bounces onto hair and shoulders.
+                      </div>
+                    </>
+                  ) : null}
+
+                  <div className="lt-subhead">Position &amp; size</div>
+                  <label className="trdur" style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: 11 }}>Size</span>
+                    <input
+                      type="range" min={0.08} max={1} step={0.005}
+                      value={lt.size}
+                      onChange={(e) => onUpdateLowerThird(lt.id, { size: +e.target.value })}
+                    />
+                    <span className="trdur__val" style={{ fontSize: 11 }}>{Math.round(lt.size * 100)}%</span>
+                  </label>
+                  <label className="trdur" style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: 11 }}>X position</span>
+                    <input
+                      type="range" min={0} max={1} step={0.005}
+                      value={lt.x}
+                      onChange={(e) => onUpdateLowerThird(lt.id, { x: +e.target.value })}
+                    />
+                    <span className="trdur__val" style={{ fontSize: 11 }}>{Math.round(lt.x * 100)}</span>
+                  </label>
+                  <label className="trdur" style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: 11 }}>Y position</span>
+                    <input
+                      type="range" min={0} max={1} step={0.005}
+                      value={lt.y}
+                      onChange={(e) => onUpdateLowerThird(lt.id, { y: +e.target.value })}
+                    />
+                    <span className="trdur__val" style={{ fontSize: 11 }}>{Math.round(lt.y * 100)}</span>
+                  </label>
+                  <div className="mini-h lt-note">
+                    Drag the clip in the Lower third lane to change when it appears.
+                    X/Y position its centre on the frame.
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="panel video-overlay">
           <h2 className="panel__h">Logo Overlay</h2>
           <div className="mini-h">Add a logo (e.g., your brand badge) fixed to one of the four corners of the video.</div>
           <input
@@ -2681,6 +2892,7 @@ if (a.paused) {
           </div>
         </div>
         </div>
+
 
         {(sideTab === "effects" || sideTab === "audio") && (
           <button

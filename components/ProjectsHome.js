@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { showConfirm, showPrompt } from "./Dialog";
+import ThemeToggle from "./ThemeToggle";
 
 function fmtBytes(n) {
   if (!n) return "0 MB";
@@ -73,6 +74,7 @@ export default function ProjectsHome({ projects, onNew, onOpen, onRename, onDele
             <span className="ph__name"><span className="ph__pre">AutoEditor</span> Mod <span className="ph__version">v1.7.1</span></span>
           </div>
           <div className="ph__actions">
+            <ThemeToggle />
             {storage && storage.quota ? (
               <span className="ph__storage" tabIndex={0} role="tooltip" aria-label="Browser storage used by AutoEditor">
                 {fmtBytes(Math.max(0, storage.quota - storage.usage))} left of {fmtBytes(storage.quota)}

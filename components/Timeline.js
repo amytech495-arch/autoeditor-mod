@@ -63,6 +63,7 @@ export default function Timeline({
   scrollRef,
   bgClips = [], onBgAdd, onBgMove, onBgTrim, onBgOpen,
   sfx = [], onSfxAdd, onSfxMove, onSfxOpen,
+  lowerThirds = [], onLtMove, onLtTrim, onLtSelect, selectedLtId,
 }) {
   const trackRef = useRef(null);
   const downRef = useRef(null); // pointer-down position, to tell a clip tap from a drag
@@ -143,6 +144,75 @@ export default function Timeline({
     if (e.target !== e.currentTarget || !onBgAdd) return;
     onBgAdd(+laneXToTime(e.clientX).toFixed(3));
   }, [onBgAdd, laneXToTime]);
+
+  // A lower-third clip: tap selects it (so the side panel can edit its key),
+  // drag slides it anywhere along its own lane. The grip offset is preserved so
+  // the clip doesn't jump to the cursor on the first move.
+  const onLtClipDown = useCallback((e, id) => {
+    e.stopPropagation();
+    const clip = lowerThirds.find((c) => c.id === id);
+    if (!clip) return;
+    const offset = laneXToTime(e.clientX) - clip.start;
+    const origin = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const move = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y) > 4) moved = true;
+      if (moved && onLtMove) onLtMove(id, +Math.max(0, laneXToTime(ev.clientX) - offset).toFixed(3));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (!moved && onLtSelect) onLtSelect(id);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }, [lowerThirds, laneXToTime, onLtMove, onLtSelect]);
+
+  const MIN_LT = 0.3; // never let a lower third collapse below this many seconds
+
+  // Drag either edge of the clip. The left edge also advances `offset` into the
+  // source file, so trimming the head keeps the frame you're looking at instead of
+  // re-showing the part that was cut off.
+  const onLtTrimDown = useCallback((e, id, edge) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const c = lowerThirds.find((x) => x.id === id);
+    if (!c || !onLtTrim) return;
+    const startX = e.clientX;
+    const cStart = c.start, cOffset = c.offset || 0, cDur = c.duration;
+    const cSrc = c.sourceDuration || c.duration;
+    const move = (ev) => {
+      const el = trackRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const dSecs = ((ev.clientX - startX) / r.width) * duration;
+      if (edge === "left") {
+        const lo = Math.max(0, cStart - cOffset);      // can't skip before the file's start
+        const hi = cStart + cDur - MIN_LT;
+        const newStart = Math.min(Math.max(cStart + dSecs, lo), hi);
+        const delta = newStart - cStart;
+        onLtTrim(id, {
+          start: +newStart.toFixed(3),
+          offset: +(cOffset + delta).toFixed(3),
+          duration: +(cDur - delta).toFixed(3),
+        });
+      } else {
+        const maxDur = cSrc - cOffset;
+        const newDur = Math.min(Math.max(cDur + dSecs, MIN_LT), maxDur);
+        onLtTrim(id, { duration: +newDur.toFixed(3) });
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }, [lowerThirds, duration, onLtTrim]);
 
   // A BG clip opens its volume popover on a clean tap; dragging it (>4px) moves it
   // along the lane instead (keeping the pointer's grip offset, so it doesn't jump).
@@ -386,6 +456,7 @@ export default function Timeline({
           <span className="tl__tag">V</span>
           <span className="tl__tag tl__tag--fx">FX</span>
           <span className="tl__tag tl__tag--bg">BG</span>
+          {lowerThirds.length > 0 && <span className="tl__tag tl__tag--lt">LT</span>}
         </div>
 
         <div className="tl__track" ref={trackRef}>
@@ -510,6 +581,45 @@ export default function Timeline({
               </div>
             ))}
           </div>
+
+          {/* One lane per lower third, each holding its single keyed clip. A
+              lane per clip (rather than one shared lane) is what lets two
+              lower thirds overlap in time instead of colliding. */}
+          {lowerThirds.map((lt) => (
+            <div
+              key={lt.id}
+              className={[
+                "tl__lane",
+                "tl__lane--lt",
+                lt.enabled === false ? "is-off" : "",
+                selectedLtId === lt.id ? "is-sel" : "",
+              ].filter(Boolean).join(" ")}
+              title={`${lt.name} — drag the clip to move it`}
+            >
+              <span className="tl__laneTag">LT</span>
+              <div
+                className="ltclip"
+                style={{ left: pctZoom(lt.start), width: pctZoom(lt.duration) }}
+                title={`${lt.name} · ${label(lt.start)} · ${lt.duration.toFixed(1)}s — drag to move, click to edit`}
+                onPointerDown={(e) => onLtClipDown(e, lt.id)}
+              >
+                <span
+                  className="ltclip__handle ltclip__handle--l"
+                  title="Drag to trim the start"
+                  onPointerDown={(e) => onLtTrimDown(e, lt.id, "left")}
+                />
+                {lt.thumb
+                  ? <img className="ltclip__thumb" src={lt.thumb} alt="" draggable={false} />
+                  : <span className="ltclip__thumb ltclip__thumb--empty" aria-hidden="true" />}
+                <span className="ltclip__label">{lt.name}</span>
+                <span
+                  className="ltclip__handle ltclip__handle--r"
+                  title="Drag to trim the end"
+                  onPointerDown={(e) => onLtTrimDown(e, lt.id, "right")}
+                />
+              </div>
+            </div>
+          ))}
 
           <div className={`tl__playhead${playing ? " is-play" : ""}${scrubbing ? " is-scrub" : ""}`} style={{ left: pctZoom(time) }}>
             <span className="tl__playhead-glow" aria-hidden="true" />

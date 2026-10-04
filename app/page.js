@@ -12,12 +12,14 @@ import { renderWebCodecs, webCodecsCanRender, pickRenderProfile, startKeepAwake,
 import { DEFAULT_TRANSITION_DURATION, mixTransitions } from "../lib/transitions";
 import { parseTranscript } from "../lib/captions";
 import { makeTextOverlay, drawTextOverlays, textOverlayFontPx } from "../lib/textOverlay";
+import { makeLowerThird, clampLowerThird, captureThumb } from "../lib/lowerThird";
 import { sanitizeVoiceFx } from "../lib/voiceFx";
 import QuickTour from "../components/QuickTour";
 
 import Dropzone from "../components/Dropzone";
 import Editor from "../components/Editor";
 import ProjectsHome from "../components/ProjectsHome";
+import ThemeToggle from "../components/ThemeToggle";
 import { DialogHost, showAlert, showPrompt } from "../components/Dialog";
 import {
   requestPersist, storageEstimate, listProjects, getProject, saveProject,
@@ -205,6 +207,18 @@ export default function Home() {
   const [captionName, setCaptionName] = useState(null);
   const [captionsOn, setCaptionsOn] = useState(false);
   const [textOverlays, setTextOverlays] = useState([]);
+  // Lower thirds: an uploaded clip shot against a backdrop, keyed live onto the
+  // preview. The decoded <video> element for each lives in ltVideosRef — it is
+  // a DOM handle, not serialisable state, and both the preview loop and the
+  // WebCodecs export need to pull decoded frames out of it.
+  const [lowerThirds, setLowerThirds] = useState([]);
+  const [selectedLtId, setSelectedLtId] = useState(null);
+  // Bumped whenever a clip's <video> reaches a drawable state. The preview only
+  // redraws when its inputs change, and "the video finished loading" is not a
+  // React state change on its own — without this a freshly added clip stays
+  // invisible until you scrub.
+  const [ltReadyTick, setLtReadyTick] = useState(0);
+  const ltVideosRef = useRef(new Map());
   // Image ↔ narration auto-sync: snap each image to its line's ACTUAL speech onset
   // in the voiceover (see lib/syncAudio.js) instead of trusting filename timestamps.
   const [syncOn, setSyncOn] = useState(false);
@@ -288,6 +302,83 @@ export default function Home() {
   const removeTextOverlay = useCallback((id) => setTextOverlays((p) => p.filter((o) => o.id !== id)), []);
   // Replace the whole overlay list at once (used when a saved config preset is applied).
   const replaceTextOverlays = useCallback((list) => setTextOverlays(list), []);
+
+  const getLtVideo = useCallback((id) => ltVideosRef.current.get(id) || null, []);
+
+  // Each Add click creates its own lower third AND its own timeline lane, so two
+  // lower thirds can overlap instead of fighting for one lane. The poster frame
+  // is grabbed after the clip is already on the timeline: a slow decode must not
+  // delay the clip appearing.
+  const addLowerThird = useCallback(async (file) => {
+    if (!file) return;
+    const id = crypto.randomUUID ? crypto.randomUUID() : `lt-${Date.now()}`;
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.src = url;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.crossOrigin = "anonymous";
+    // This element is never appended to the document, so nothing triggers the
+    // fetch implicitly — without load() readyState stays 0 and both the preview
+    // and the export skip the clip.
+    video.load();
+    const markReady = () => setLtReadyTick((n) => n + 1);
+    video.addEventListener("loadeddata", markReady, { once: true });
+    video.addEventListener("canplay", markReady, { once: true });
+    let sourceDuration = 3;
+    try {
+      sourceDuration = await getMediaDuration(file);
+    } catch {
+      // A duration we can't read still gets a lane; the user can re-pick the file.
+    }
+    ltVideosRef.current.set(id, video);
+    const lt = makeLowerThird(id, {
+      file,
+      url,
+      sourceDuration,
+      name: (file.name || "Lower third").replace(/\.[^.]+$/, ""),
+    });
+    setLowerThirds((prev) => [...prev, lt]);
+    setSelectedLtId(id);
+    captureThumb(video)
+      .then((thumb) => {
+        if (thumb) setLowerThirds((prev) => prev.map((l) => (l.id === id ? { ...l, thumb } : l)));
+      })
+      .catch(() => {});
+    return id;
+  }, []);
+
+  const updateLowerThird = useCallback((id, patch) => {
+    setLowerThirds((prev) => prev.map((l) => {
+      if (l.id !== id) return l;
+      const next = { ...l, ...patch };
+      if (patch.size !== undefined) next.size = Math.min(1, Math.max(0.08, +patch.size || 0.08));
+      if (patch.x !== undefined) next.x = Math.min(1, Math.max(0, +patch.x || 0));
+      if (patch.y !== undefined) next.y = Math.min(1, Math.max(0, +patch.y || 0));
+      if (patch.similarity !== undefined) next.similarity = Math.min(1, Math.max(0, +patch.similarity || 0));
+      if (patch.smoothness !== undefined) next.smoothness = Math.min(1, Math.max(0, +patch.smoothness || 0));
+      if (patch.despill !== undefined) next.despill = Math.min(1, Math.max(0, +patch.despill || 0));
+      if (patch.start !== undefined) next.start = Math.max(0, +patch.start || 0);
+      // Keep the clip on the timeline no matter which control moved it.
+      return clampLowerThird(next, audioDuration);
+    }));
+  }, [audioDuration]);
+
+  const removeLowerThird = useCallback((id) => {
+    setLowerThirds((prev) => {
+      const gone = prev.find((l) => l.id === id);
+      if (gone?.url) URL.revokeObjectURL(gone.url);
+      return prev.filter((l) => l.id !== id);
+    });
+    const v = ltVideosRef.current.get(id);
+    if (v) {
+      v.removeAttribute("src");
+      v.load();
+      ltVideosRef.current.delete(id);
+    }
+    setSelectedLtId((cur) => (cur === id ? null : cur));
+  }, []);
 
   const onWatermark = useCallback(async (files) => {
     const file = files[0];
@@ -1137,6 +1228,9 @@ export default function Home() {
         watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
         logoFile, logoUrl, logoCorner, logoSize, logoOpacity, logoEnabled,
         textOverlays,
+        // The blob URLs are live handles into this document, so they resolve
+        // fine here; they're just never persisted.
+        lowerThirds: lowerThirds.filter((l) => l.url),
         onProgress: setProgress,
       });
       setOutUrl(URL.createObjectURL(blob));
@@ -1152,7 +1246,7 @@ export default function Home() {
       overlayFile, overlayUrl, overlayDuration, overlayOpacity, overlayBlendMode, overlayLoop, overlayEnabled,
       watermarkFile, watermarkUrl, watermarkSize, watermarkX, watermarkY, watermarkOpacity, watermarkEnabled,
       logoFile, logoUrl, logoCorner, logoSize, logoOpacity, logoEnabled,
-      textOverlays]);
+      textOverlays, lowerThirds]);
 
   // --- SPIKE: WebCodecs GPU render (video-only, no audio). Proves the pipeline. ---
   const [wcBusy, setWcBusy] = useState(false);
@@ -1410,6 +1504,7 @@ export default function Home() {
             title="Add media" filled={imageCount > 0}
             filledLabel={imageCount ? `${imageCount} clips` : ""}
           />
+          <ThemeToggle />
         </div>
       </div>
 
@@ -1600,6 +1695,14 @@ export default function Home() {
           removeTextOverlay={removeTextOverlay}
           replaceTextOverlays={replaceTextOverlays}
           onWatermark={onWatermark}
+          lowerThirds={lowerThirds}
+          ltReadyTick={ltReadyTick}
+          selectedLtId={selectedLtId}
+          setSelectedLtId={setSelectedLtId}
+          addLowerThird={addLowerThird}
+          updateLowerThird={updateLowerThird}
+          removeLowerThird={removeLowerThird}
+          getLtVideo={getLtVideo}
         />
       )}
       </div>
